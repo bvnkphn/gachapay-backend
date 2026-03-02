@@ -9,32 +9,82 @@ datasource db {
 }
 
 model User {
-  id                String    @id @default(uuid())
-  email             String    @unique
-  password          String?
-  name              String?
-  avatar            String?
-  provider          String?   @default("local") // local, google, facebook
-  providerId        String?
+  id                BigInt    @id @default(autoincrement())
+  uuid              String    @unique @default(uuid()) @db.Char(36)
+  email             String    @unique @db.VarChar(255)
+  password_hash     String?   @db.VarChar(255)
+  tier              String?   @db.VarChar(50)
+  point_balance     Int       @default(0)
+  wallet_balance    Decimal   @default(0) @db.Decimal(12, 2)
+  role              String    @default("user") @db.VarChar(20) // user, admin, etc.
+  created_at        DateTime  @default(now()) @db.Timestamp(0)
   isEmailVerified   Boolean   @default(false)
+  updated_at        DateTime  @updatedAt @db.Timestamp(0)
+  last_login_at     DateTime? @db.Timestamp(0)
+  
+  // Keep existing OAuth fields
+  name              String?
+  provider          String?   @default("local") // local, google, facebook
+  providerId        String?   @db.VarChar(255)
+  
+  // Keep existing system fields (moved to separate tables but keep for backward compatibility)
   resetPasswordToken String?
   resetPasswordExpires DateTime?
+  otpCode           String?
+  otpExpires        DateTime?
+  otpAttempts       Int       @default(0)
   vipLevel          Int       @default(0)
   vipPoints         Int       @default(0)
   balance           Decimal   @default(0) @db.Decimal(10, 2)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
   
   orders            Order[]
   transactions      Transaction[]
+  passwordResets    PasswordReset[]
+  otpRequests       OtpRequest[]
   
   @@index([email])
+  @@index([uuid])
   @@index([provider, providerId])
+  @@map("users")
+}
+
+model PasswordReset {
+  id            BigInt    @id @default(autoincrement())
+  uuid          String    @unique @default(uuid()) @db.Char(36)
+  user_id       BigInt
+  token_hash    String    @db.VarChar(255)
+  expires_at    DateTime  @db.Timestamp(0)
+  used_at       DateTime? @db.Timestamp(0)
+  ip_address    String?   @db.VarChar(45)
+  created_at    DateTime  @default(now()) @db.Timestamp(0)
+  
+  user          User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  @@index([user_id])
+  @@index([token_hash])
+  @@map("password_resets")
+}
+
+model OtpRequest {
+  id            BigInt    @id @default(autoincrement())
+  uuid          String    @unique @default(uuid()) @db.Char(36)
+  user_id       BigInt
+  otp_hash      String    @db.VarChar(255)
+  expires_at    DateTime  @db.Timestamp(0)
+  attempt_count Int       @default(0)
+  ip_address    String?   @db.VarChar(45)
+  created_at    DateTime  @default(now()) @db.Timestamp(0)
+  
+  user          User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  @@index([user_id])
+  @@index([otp_hash])
+  @@map("otp_requests")
 }
 
 model Order {
   id            String   @id @default(uuid())
-  userId        String
+  userId        BigInt
   gameId        String
   gameName      String
   packageId     String
@@ -55,7 +105,7 @@ model Order {
 
 model Transaction {
   id            String   @id @default(uuid())
-  userId        String
+  userId        BigInt
   type          String   // topup, purchase, refund
   amount        Decimal  @db.Decimal(10, 2)
   description   String?

@@ -10,7 +10,7 @@ export class OrdersService {
         return this.prisma.order.create({ data });
     }
 
-    async findAll(userId: string) {
+    async findAll(userId: bigint) {
         return this.prisma.order.findMany({
             where: { userId },
             orderBy: { createdAt: 'desc' },

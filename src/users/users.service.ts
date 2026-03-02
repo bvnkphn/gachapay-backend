@@ -10,8 +10,8 @@ export class UsersService {
         return this.prisma.user.create({ data });
     }
 
-    async findById(id: string) {
-        return this.prisma.user.findUnique({ where: { id } });
+    async findById(uuid: string) {
+        return this.prisma.user.findUnique({ where: { uuid } });
     }
 
     async findByEmail(email: string) {
@@ -30,14 +30,27 @@ export class UsersService {
         });
     }
 
-    async update(id: string, data: Prisma.UserUpdateInput) {
+    async findByEmailWithOtp(email: string) {
+        return this.prisma.user.findUnique({
+            where: { email },
+            select: {
+                uuid: true,
+                email: true,
+                otpCode: true,
+                otpExpires: true,
+                otpAttempts: true,
+            },
+        });
+    }
+
+    async update(uuid: string, data: Prisma.UserUpdateInput) {
         return this.prisma.user.update({
-            where: { id },
+            where: { uuid },
             data,
         });
     }
 
-    async delete(id: string) {
-        return this.prisma.user.delete({ where: { id } });
+    async delete(uuid: string) {
+        return this.prisma.user.delete({ where: { uuid } });
     }
 }

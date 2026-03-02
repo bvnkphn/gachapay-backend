@@ -2,6 +2,11 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 
+// Fix BigInt serialization
+BigInt.prototype['toJSON'] = function () {
+    return this.toString();
+};
+
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
 

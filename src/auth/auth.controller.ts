@@ -2,7 +2,7 @@ import { Controller, Post, Body, Get, UseGuards, Req, Res, Query } from '@nestjs
 import { AuthGuard } from '@nestjs/passport';
 import { Response } from 'express';
 import { AuthService } from './auth.service';
-import { RegisterDto, LoginDto, ForgotPasswordDto, ResetPasswordDto } from './dto';
+import { RegisterDto, LoginDto, ForgotPasswordDto, ResetPasswordDto, SendOtpDto, VerifyOtpDto } from './dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Controller('auth')
@@ -27,6 +27,16 @@ export class AuthController {
     @Post('reset-password')
     async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
         return this.authService.resetPassword(resetPasswordDto);
+    }
+
+    @Post('send-otp')
+    async sendOtp(@Body() sendOtpDto: SendOtpDto) {
+        return this.authService.sendOtp(sendOtpDto);
+    }
+
+    @Post('verify-otp')
+    async verifyOtp(@Body() verifyOtpDto: VerifyOtpDto) {
+        return this.authService.verifyOtp(verifyOtpDto);
     }
 
     @Get('google')

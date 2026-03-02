@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { UsersService } from '../users/users.service';
 import { EmailService } from './email.service';
-import { RegisterDto, LoginDto, ForgotPasswordDto, ResetPasswordDto } from './dto';
+import { RegisterDto, LoginDto, ForgotPasswordDto, ResetPasswordDto, SendOtpDto, VerifyOtpDto } from './dto';
 
 @Injectable()
 export class AuthService {
@@ -30,12 +30,12 @@ export class AuthService {
         // Create user
         const user = await this.usersService.create({
             email,
-            password: hashedPassword,
+            password_hash: hashedPassword,
             name,
         });
 
         // Generate token
-        const token = this.generateToken(user.id, user.email);
+        const token = this.generateToken(user.uuid, user.email);
 
         return {
             user: this.sanitizeUser(user),
@@ -48,18 +48,18 @@ export class AuthService {
 
         // Find user
         const user = await this.usersService.findByEmail(email);
-        if (!user || !user.password) {
+        if (!user || !user.password_hash) {
             throw new UnauthorizedException('Invalid credentials');
         }
 
         // Verify password
-        const isPasswordValid = await bcrypt.compare(password, user.password);
+        const isPasswordValid = await bcrypt.compare(password, user.password_hash);
         if (!isPasswordValid) {
             throw new UnauthorizedException('Invalid credentials');
         }
 
         // Generate token
-        const token = this.generateToken(user.id, user.email);
+        const token = this.generateToken(user.uuid, user.email);
 
         return {
             user: this.sanitizeUser(user),
@@ -80,7 +80,7 @@ export class AuthService {
         const resetToken = this.generateResetToken();
         const resetExpires = new Date(Date.now() + 3600000); // 1 hour
 
-        await this.usersService.update(user.id, {
+        await this.usersService.update(user.uuid, {
             resetPasswordToken: resetToken,
             resetPasswordExpires: resetExpires,
         });
@@ -104,10 +104,81 @@ export class AuthService {
         const hashedPassword = await bcrypt.hash(password, 10);
 
         // Update password and clear reset token
-        await this.usersService.update(user.id, {
-            password: hashedPassword,
+        await this.usersService.update(user.uuid, {
+            password_hash: hashedPassword,
             resetPasswordToken: null,
             resetPasswordExpires: null,
+        });
+
+        return { message: 'Password reset successful' };
+    }
+
+    async sendOtp(sendOtpDto: SendOtpDto) {
+        const { email } = sendOtpDto;
+
+        const user = await this.usersService.findByEmail(email);
+        if (!user) {
+            // Don't reveal if email exists
+            return { message: 'If email exists, OTP has been sent' };
+        }
+
+        // Generate 6-digit OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otpExpires = new Date(Date.now() + 600000); // 10 minutes
+
+        await this.usersService.update(user.uuid, {
+            otpCode: otp,
+            otpExpires: otpExpires,
+            otpAttempts: 0,
+        });
+
+        // Send OTP email
+        await this.emailService.sendOtpEmail(user.email, otp);
+
+        return { message: 'If email exists, OTP has been sent' };
+    }
+
+    async verifyOtp(verifyOtpDto: VerifyOtpDto) {
+        const { email, otp, newPassword } = verifyOtpDto;
+
+        const user = await this.usersService.findByEmailWithOtp(email);
+        if (!user) {
+            throw new BadRequestException('Invalid email or OTP');
+        }
+
+        // Check if OTP exists
+        if (!user.otpCode || !user.otpExpires) {
+            throw new BadRequestException('No OTP found. Please request a new one');
+        }
+
+        // Check if OTP expired
+        if (user.otpExpires < new Date()) {
+            throw new BadRequestException('OTP has expired. Please request a new one');
+        }
+
+        // Check attempts (max 5 attempts)
+        if (user.otpAttempts >= 5) {
+            throw new BadRequestException('Too many failed attempts. Please request a new OTP');
+        }
+
+        // Verify OTP
+        if (user.otpCode !== otp) {
+            // Increment attempts
+            await this.usersService.update(user.uuid, {
+                otpAttempts: user.otpAttempts + 1,
+            });
+            throw new BadRequestException('Invalid OTP');
+        }
+
+        // Hash new password
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        // Update password and clear OTP
+        await this.usersService.update(user.uuid, {
+            password_hash: hashedPassword,
+            otpCode: null,
+            otpExpires: null,
+            otpAttempts: 0,
         });
 
         return { message: 'Password reset successful' };
@@ -123,7 +194,7 @@ export class AuthService {
             user = await this.usersService.findByEmail(email);
             if (user) {
                 // Link Google account
-                user = await this.usersService.update(user.id, {
+                user = await this.usersService.update(user.uuid, {
                     provider: 'google',
                     providerId: id,
                 });
@@ -132,7 +203,6 @@ export class AuthService {
                 user = await this.usersService.create({
                     email,
                     name: displayName,
-                    avatar: photos?.[0]?.value,
                     provider: 'google',
                     providerId: id,
                     isEmailVerified: true,
@@ -140,7 +210,7 @@ export class AuthService {
             }
         }
 
-        const token = this.generateToken(user.id, user.email);
+        const token = this.generateToken(user.uuid, user.email);
 
         return {
             user: this.sanitizeUser(user),
@@ -158,7 +228,7 @@ export class AuthService {
             const existingUser = await this.usersService.findByEmail(email);
             if (existingUser && !email.includes('@placeholder.com')) {
                 // Link Facebook account
-                user = await this.usersService.update(existingUser.id, {
+                user = await this.usersService.update(existingUser.uuid, {
                     provider: 'facebook',
                     providerId: id,
                 });
@@ -167,7 +237,6 @@ export class AuthService {
                 user = await this.usersService.create({
                     email,
                     name: displayName,
-                    avatar: photos?.[0]?.value,
                     provider: 'facebook',
                     providerId: id,
                     isEmailVerified: !email.includes('@placeholder.com'),
@@ -175,7 +244,7 @@ export class AuthService {
             }
         }
 
-        const token = this.generateToken(user.id, user.email);
+        const token = this.generateToken(user.uuid, user.email);
 
         return {
             user: this.sanitizeUser(user),
@@ -193,7 +262,7 @@ export class AuthService {
     }
 
     private sanitizeUser(user: any) {
-        const { password, resetPasswordToken, resetPasswordExpires, ...sanitized } = user;
+        const { password_hash, resetPasswordToken, resetPasswordExpires, ...sanitized } = user;
         return sanitized;
     }
 }

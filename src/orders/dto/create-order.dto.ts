@@ -1,17 +1,18 @@
 import { IsString, IsNotEmpty, IsNumber, IsPositive } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CreateOrderDto {
-    @IsString()
+    @Transform(({ value }) => BigInt(value))
     @IsNotEmpty()
-    gameId: string;
+    gameId: bigint;
 
     @IsString()
     @IsNotEmpty()
     gameName: string;
 
-    @IsString()
+    @Transform(({ value }) => BigInt(value))
     @IsNotEmpty()
-    packageId: string;
+    packageId: bigint;
 
     @IsString()
     @IsNotEmpty()

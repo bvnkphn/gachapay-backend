@@ -15,7 +15,7 @@ export class OrdersController {
 
     @Get(':id')
     async findOne(@Param('id') id: string) {
-        const order = await this.ordersService.findById(id);
+        const order = await this.ordersService.findById(BigInt(id));
         if (!order) {
             throw new NotFoundException('Order not found');
         }
@@ -25,14 +25,14 @@ export class OrdersController {
     @Post()
     async create(@Req() req: any, @Body() createOrderDto: CreateOrderDto) {
         return this.ordersService.create({
-            gameId: createOrderDto.gameId,
+            userId: req.user.id,
+            gameId: createOrderDto.gameId as any,
             gameName: createOrderDto.gameName,
-            packageId: createOrderDto.packageId,
+            packageId: createOrderDto.packageId as any,
             packageName: createOrderDto.packageName,
-            packagePrice: createOrderDto.packagePrice.toString(),
+            packagePrice: createOrderDto.packagePrice,
             uid: createOrderDto.uid,
             paymentMethod: createOrderDto.paymentMethod,
-            user: { connect: { id: req.user.id } },
         });
     }
 }

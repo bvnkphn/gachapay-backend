@@ -6,7 +6,7 @@ import { Prisma } from '@prisma/client';
 export class OrdersService {
     constructor(private prisma: PrismaService) { }
 
-    async create(data: Prisma.OrderCreateInput) {
+    async create(data: Prisma.OrderUncheckedCreateInput) {
         return this.prisma.order.create({ data });
     }
 
@@ -17,11 +17,11 @@ export class OrdersService {
         });
     }
 
-    async findById(id: string) {
+    async findById(id: bigint) {
         return this.prisma.order.findUnique({ where: { id } });
     }
 
-    async update(id: string, data: Prisma.OrderUpdateInput) {
+    async update(id: bigint, data: Prisma.OrderUpdateInput) {
         return this.prisma.order.update({
             where: { id },
             data,

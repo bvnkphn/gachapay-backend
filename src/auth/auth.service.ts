@@ -78,11 +78,13 @@ export class AuthService {
 
         // Generate reset token
         const resetToken = this.generateResetToken();
-        const resetExpires = new Date(Date.now() + 3600000); // 1 hour
+        const tokenHash = await bcrypt.hash(resetToken, 10);
+        const expiresAt = new Date(Date.now() + 3600000); // 1 hour
 
-        await this.usersService.update(user.uuid, {
-            resetPasswordToken: resetToken,
-            resetPasswordExpires: resetExpires,
+        await this.usersService.createPasswordReset({
+            user_id: user.id,
+            token_hash: tokenHash,
+            expires_at: expiresAt,
         });
 
         // Send email
@@ -95,20 +97,21 @@ export class AuthService {
     async resetPassword(resetPasswordDto: ResetPasswordDto) {
         const { token, password } = resetPasswordDto;
 
-        const user = await this.usersService.findByResetToken(token);
-        if (!user || !user.resetPasswordExpires || user.resetPasswordExpires < new Date()) {
+        const resetRecord = await this.usersService.findValidPasswordReset(token);
+        if (!resetRecord) {
             throw new BadRequestException('Invalid or expired reset token');
         }
 
         // Hash new password
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Update password and clear reset token
-        await this.usersService.update(user.uuid, {
+        // Update password
+        await this.usersService.update(resetRecord.user.uuid, {
             password_hash: hashedPassword,
-            resetPasswordToken: null,
-            resetPasswordExpires: null,
         });
+
+        // Mark reset token as used
+        await this.usersService.markPasswordResetAsUsed(resetRecord.id);
 
         return { message: 'Password reset successful' };
     }
@@ -124,12 +127,13 @@ export class AuthService {
 
         // Generate 6-digit OTP
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        const otpExpires = new Date(Date.now() + 600000); // 10 minutes
+        const otpHash = await bcrypt.hash(otp, 10);
+        const expiresAt = new Date(Date.now() + 600000); // 10 minutes
 
-        await this.usersService.update(user.uuid, {
-            otpCode: otp,
-            otpExpires: otpExpires,
-            otpAttempts: 0,
+        await this.usersService.createOtpRequest({
+            user_id: user.id,
+            otp_hash: otpHash,
+            expires_at: expiresAt,
         });
 
         // Send OTP email
@@ -141,45 +145,39 @@ export class AuthService {
     async verifyOtp(verifyOtpDto: VerifyOtpDto) {
         const { email, otp, newPassword } = verifyOtpDto;
 
-        const user = await this.usersService.findByEmailWithOtp(email);
+        const user = await this.usersService.findByEmail(email);
         if (!user) {
             throw new BadRequestException('Invalid email or OTP');
         }
 
-        // Check if OTP exists
-        if (!user.otpCode || !user.otpExpires) {
-            throw new BadRequestException('No OTP found. Please request a new one');
-        }
-
-        // Check if OTP expired
-        if (user.otpExpires < new Date()) {
-            throw new BadRequestException('OTP has expired. Please request a new one');
+        const otpRecord = await this.usersService.findValidOtpRequest(user.id);
+        if (!otpRecord) {
+            throw new BadRequestException('No valid OTP found. Please request a new one');
         }
 
         // Check attempts (max 5 attempts)
-        if (user.otpAttempts >= 5) {
+        if (otpRecord.attempt_count >= 5) {
             throw new BadRequestException('Too many failed attempts. Please request a new OTP');
         }
 
         // Verify OTP
-        if (user.otpCode !== otp) {
+        const isOtpValid = await bcrypt.compare(otp, otpRecord.otp_hash);
+        if (!isOtpValid) {
             // Increment attempts
-            await this.usersService.update(user.uuid, {
-                otpAttempts: user.otpAttempts + 1,
-            });
+            await this.usersService.incrementOtpAttempts(otpRecord.id);
             throw new BadRequestException('Invalid OTP');
         }
 
         // Hash new password
         const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-        // Update password and clear OTP
+        // Update password
         await this.usersService.update(user.uuid, {
             password_hash: hashedPassword,
-            otpCode: null,
-            otpExpires: null,
-            otpAttempts: 0,
         });
+
+        // Delete used OTP
+        await this.usersService.deleteOtpRequest(otpRecord.id);
 
         return { message: 'Password reset successful' };
     }
@@ -262,7 +260,7 @@ export class AuthService {
     }
 
     private sanitizeUser(user: any) {
-        const { password_hash, resetPasswordToken, resetPasswordExpires, ...sanitized } = user;
+        const { password_hash, ...sanitized } = user;
         return sanitized;
     }
 }

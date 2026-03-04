@@ -8,6 +8,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum UserRole {
+  USER
+  ADMIN
+}
+
 model User {
   id                BigInt    @id @default(autoincrement())
   uuid              String    @unique @default(uuid()) @db.Char(36)
@@ -16,26 +21,16 @@ model User {
   tier              String?   @db.VarChar(50)
   point_balance     Int       @default(0)
   wallet_balance    Decimal   @default(0) @db.Decimal(12, 2)
-  role              String    @default("user") @db.VarChar(20) // user, admin, etc.
+  role              UserRole  @default(USER)
   created_at        DateTime  @default(now()) @db.Timestamp(0)
   isEmailVerified   Boolean   @default(false)
   updated_at        DateTime  @updatedAt @db.Timestamp(0)
   last_login_at     DateTime? @db.Timestamp(0)
   
-  // Keep existing OAuth fields
-  name              String?
-  provider          String?   @default("local") // local, google, facebook
+  // OAuth fields
+  name              String?   @db.VarChar(255)
+  provider          String    @default("local") @db.VarChar(20) // local, google, facebook
   providerId        String?   @db.VarChar(255)
-  
-  // Keep existing system fields (moved to separate tables but keep for backward compatibility)
-  resetPasswordToken String?
-  resetPasswordExpires DateTime?
-  otpCode           String?
-  otpExpires        DateTime?
-  otpAttempts       Int       @default(0)
-  vipLevel          Int       @default(0)
-  vipPoints         Int       @default(0)
-  balance           Decimal   @default(0) @db.Decimal(10, 2)
   
   orders            Order[]
   transactions      Transaction[]
@@ -83,72 +78,82 @@ model OtpRequest {
 }
 
 model Order {
-  id            String   @id @default(uuid())
+  id            BigInt   @id @default(autoincrement())
   userId        BigInt
-  gameId        String
-  gameName      String
-  packageId     String
-  packageName   String
+  gameId        BigInt
+  gameName      String   @db.VarChar(255)
+  packageId     BigInt
+  packageName   String   @db.VarChar(255)
   packagePrice  Decimal  @db.Decimal(10, 2)
-  uid           String   // Game UID
-  status        String   @default("pending") // pending, processing, completed, failed
-  paymentMethod String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  uid           String   @db.VarChar(255) // Game UID
+  status        String   @default("pending") @db.VarChar(20) // pending, processing, completed, failed
+  paymentMethod String?  @db.VarChar(50)
+  createdAt     DateTime @default(now()) @db.Timestamp(0)
+  updatedAt     DateTime @updatedAt @db.Timestamp(0)
   
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game          Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  package       GamePackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
   
   @@index([userId])
+  @@index([gameId])
+  @@index([packageId])
   @@index([status])
   @@index([createdAt])
+  @@map("orders")
 }
 
 model Transaction {
-  id            String   @id @default(uuid())
+  id            BigInt   @id @default(autoincrement())
   userId        BigInt
-  type          String   // topup, purchase, refund
+  type          String   @db.VarChar(50) // topup, purchase, refund
   amount        Decimal  @db.Decimal(10, 2)
-  description   String?
-  status        String   @default("completed") // pending, completed, failed
-  createdAt     DateTime @default(now())
+  description   String?  @db.Text
+  status        String   @default("completed") @db.VarChar(20) // pending, completed, failed
+  createdAt     DateTime @default(now()) @db.Timestamp(0)
   
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   @@index([userId])
   @@index([type])
   @@index([createdAt])
+  @@map("transactions")
 }
 
 model Game {
-  id          String   @id @default(uuid())
-  name        String
-  slug        String   @unique
-  description String?
-  image       String?
-  category    String?
+  id          BigInt   @id @default(autoincrement())
+  name        String   @db.VarChar(255)
+  slug        String   @unique @db.VarChar(255)
+  description String?  @db.Text
+  image       String?  @db.VarChar(500)
+  category    String?  @db.VarChar(100)
   isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now()) @db.Timestamp(0)
+  updatedAt   DateTime @updatedAt @db.Timestamp(0)
   
   packages    GamePackage[]
+  orders      Order[]
   
   @@index([slug])
   @@index([isActive])
+  @@map("games")
 }
 
 model GamePackage {
-  id          String   @id @default(uuid())
-  gameId      String
-  name        String
-  description String?
+  id          BigInt   @id @default(autoincrement())
+  gameId      BigInt
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
   price       Decimal  @db.Decimal(10, 2)
   discount    Int      @default(0)
   isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now()) @db.Timestamp(0)
+  updatedAt   DateTime @updatedAt @db.Timestamp(0)
   
   game        Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  orders      Order[]
   
   @@index([gameId])
   @@index([isActive])
+  @@map("game_packages")
 }

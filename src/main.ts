@@ -1,35 +1,38 @@
-import { NestFactory }    from '@nestjs/core';
+import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
-import { AppModule }      from './app.module';
+import { AppModule } from './app.module';
+
+// Fix BigInt serialization
+BigInt.prototype['toJSON'] = function () {
+    return this.toString();
+};
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+    const app = await NestFactory.create(AppModule);
 
-  app.setGlobalPrefix('api');
+    // Enable CORS
+    app.enableCors({
+        origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+        credentials: true,
+    });
 
-  app.enableCors({
-    origin:      process.env.FRONTEND_URL ?? 'http://localhost:3000',
-    credentials: true,
-  });
+    // Global validation pipe
+    app.useGlobalPipes(
+        new ValidationPipe({
+            whitelist: true,
+            transform: true,
+            forbidNonWhitelisted: true,
+        }),
+    );
 
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist:        true,
-    transform:        true,
-    transformOptions: { enableImplicitConversion: true },
-  }));
+    // API prefix
+    app.setGlobalPrefix('api');
 
-  const port = process.env.PORT ?? 3001;
-  await app.listen(port);
+    const port = process.env.PORT || 3001;
+    await app.listen(port);
 
-  console.log(`\n🚀 Backend: http://localhost:${port}/api\n`);
-  console.log('  GET  /api/games                   ← หน้า Home (game list)');
-  console.log('  GET  /api/games/banners            ← banner carousel');
-  console.log('  GET  /api/games/:slug              ← หน้า Top-up (packages)');
-  console.log('  POST /api/topup/validate-uid       ← ตรวจสอบ UID');
-  console.log('  POST /api/topup/calculate-price    ← คำนวณราคา');
-  console.log('  POST /api/coupons/validate         ← ตรวจ coupon (checkout)');
-  console.log('  POST /api/orders                   ← สร้าง order');
-  console.log('  POST /api/orders/:id/pay           ← ชำระเงิน');
-  console.log('  GET  /api/orders/track/:no         ← ติดตาม order\n');
+    console.log(`🚀 Backend server running on http://localhost:${port}`);
+    console.log(`📚 API available at http://localhost:${port}/api`);
 }
+
 bootstrap();

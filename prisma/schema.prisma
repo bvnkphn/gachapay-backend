@@ -3,6 +3,13 @@ generator client {
   provider = "prisma-client-js"
 }
 
+enum GameLabel {
+  NONE
+  HOT
+  NEW
+  SALE
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -126,17 +133,37 @@ model Game {
   slug        String   @unique @db.VarChar(255)
   description String?  @db.Text
   image       String?  @db.VarChar(500)
-  category    String?  @db.VarChar(100)
+  categoryId  BigInt?
+  label       GameLabel @default(NONE)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now()) @db.Timestamp(0)
   updatedAt   DateTime @updatedAt @db.Timestamp(0)
-  
+
+  category    GameCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   packages    GamePackage[]
   orders      Order[]
-  
+
   @@index([slug])
   @@index([isActive])
+  @@index([categoryId])
   @@map("games")
+}
+
+model GameCategory {
+  id          BigInt   @id @default(autoincrement())
+  name        String   @unique @db.VarChar(100)
+  slug        String   @unique @db.VarChar(100)
+  description String?  @db.Text
+  icon        String?  @db.VarChar(50)
+  isActive    Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamp(0)
+  updatedAt   DateTime @updatedAt @db.Timestamp(0)
+
+  games       Game[]
+
+  @@index([isActive])
+  @@map("game_categories")
 }
 
 model GamePackage {
@@ -156,4 +183,22 @@ model GamePackage {
   @@index([gameId])
   @@index([isActive])
   @@map("game_packages")
+}
+
+model Banner {
+  id          BigInt   @id @default(autoincrement())
+  uuid        String   @unique @default(uuid()) @db.Char(36)
+  image       String   @db.VarChar(500)
+  title       String?  @db.VarChar(255)
+  description String?  @db.Text
+  redirectUrl String   @db.VarChar(500)
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamp(0)
+  updatedAt   DateTime @updatedAt @db.Timestamp(0)
+  
+  @@index([isActive])
+  @@index([order])
+  @@index([createdAt])
+  @@map("banners")
 }

@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { GamesService } from './games.service';
 import { GamesController } from './games.controller';
+import { CategoriesModule } from '../categories/categories.module';
 
 @Module({
+    imports: [CategoriesModule],
     controllers: [GamesController],
     providers: [GamesService],
     exports: [GamesService],

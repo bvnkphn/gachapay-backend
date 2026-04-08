@@ -35,4 +35,10 @@ export class OrdersController {
             paymentMethod: createOrderDto.paymentMethod,
         });
     }
+
+    @Get('me/recent')
+    async getRecentOrders(@Req() req: any) {
+        const recent = await this.ordersService.findRecentByUser(req.user.id);
+        return { recent_orders: recent };
+    }
 }

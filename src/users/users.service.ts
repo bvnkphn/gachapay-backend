@@ -99,4 +99,59 @@ export class UsersService {
     async delete(uuid: string) {
         return this.prisma.user.delete({ where: { uuid } });
     }
+
+    // --- Account Overview APIs ---
+
+    async getProfile(uuid: string) {
+        const user = await this.prisma.user.findUnique({
+            where: { uuid },
+            select: { email: true, name: true, created_at: true },
+        });
+        if (!user) return null;
+        const display_name = user.name ?? user.email.split('@')[0];
+        return {
+            display_name,
+            email: user.email,
+            member_since: user.created_at,
+        };
+    }
+
+    async getLoyalty(uuid: string) {
+        const user = await this.prisma.user.findUnique({
+            where: { uuid },
+            select: { tier: true, point_balance: true },
+        });
+        if (!user) return null;
+
+        const tierThresholds: Record<string, number> = {
+            BRONZE: 1000,
+            SILVER: 5000,
+            GOLD: 10000,
+            PLATINUM: 50000,
+        };
+
+        const currentTier = (user.tier ?? 'BRONZE').toUpperCase();
+        const tiers = Object.keys(tierThresholds);
+        const currentIndex = tiers.indexOf(currentTier);
+        const nextTier = tiers[currentIndex + 1];
+        const next_tier_threshold = nextTier ? tierThresholds[nextTier] : null;
+
+        return {
+            tier: user.tier ?? 'BRONZE',
+            current_points: user.point_balance,
+            next_tier_threshold,
+        };
+    }
+
+    async getWalletBalance(uuid: string) {
+        const user = await this.prisma.user.findUnique({
+            where: { uuid },
+            select: { wallet_balance: true },
+        });
+        if (!user) return null;
+        return {
+            amount: user.wallet_balance,
+            currency: 'THB',
+        };
+    }
 }

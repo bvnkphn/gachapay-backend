@@ -27,4 +27,27 @@ export class OrdersService {
             data,
         });
     }
+
+    async findRecentByUser(userId: bigint) {
+        const orders = await this.prisma.order.findMany({
+            where: { userId },
+            orderBy: { createdAt: 'desc' },
+            take: 5,
+            select: {
+                packageName: true,
+                gameName: true,
+                packagePrice: true,
+                status: true,
+                createdAt: true,
+            },
+        });
+
+        return orders.map((o) => ({
+            product_name: o.packageName,
+            game_category: o.gameName,
+            amount: o.packagePrice,
+            status: o.status,
+            created_at: o.createdAt,
+        }));
+    }
 }

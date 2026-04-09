@@ -31,12 +31,14 @@ export class GamesController {
     // Get all games from local database
     @Get()
     async findAll() {
-        return this.gamesService.findAll();
+        const games = await this.gamesService.findAll();
+        return { data: games };
     }
 
     // Get game by slug from local database
     @Get(':slug')
     async findOne(@Param('slug') slug: string) {
-        return this.gamesService.findBySlug(slug);
+        const game = await this.gamesService.findBySlug(slug);
+        return { data: game };
     }
 }

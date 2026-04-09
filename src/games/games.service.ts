@@ -12,15 +12,82 @@ export class GamesService {
     async findAll() {
         return this.prisma.game.findMany({
             where: { isActive: true },
-            include: { packages: true },
+            include: { 
+                packages: true,
+                inputFields: {
+                    where: { isActive: true },
+                    include: { options: { where: { isActive: true } } },
+                    orderBy: { order: 'asc' },
+                },
+            },
         });
     }
 
     async findBySlug(slug: string) {
-        return this.prisma.game.findUnique({
+        // Try to find in database first
+        const dbGame = await this.prisma.game.findUnique({
             where: { slug },
-            include: { packages: true },
+            include: { 
+                packages: true,
+                inputFields: {
+                    where: { isActive: true },
+                    include: { options: { where: { isActive: true } } },
+                    orderBy: { order: 'asc' },
+                },
+            },
         });
+
+        if (dbGame) {
+            return this.transformDbGame(dbGame);
+        }
+
+        // Fallback: Fetch from external API if not in database
+        try {
+            const response = await fetch(
+                'https://x.24payseller.com/products/list',
+            );
+
+            if (!response.ok) {
+                throw new Error(
+                    `Failed to fetch games: ${response.statusText}`,
+                );
+            }
+
+            const rawData = await response.json();
+            const transformedData = await this.transformGameData(rawData);
+
+            // Find the game by slug in transformed data
+            const game = transformedData.data.find((g: any) => g.slug === slug);
+
+            if (game) {
+                return game;
+            }
+
+            return null;
+        } catch (error) {
+            console.error('Error fetching game from external API:', error);
+            return null;
+        }
+    }
+
+    private transformDbGame(game: any) {
+        return {
+            ...game,
+            fields: game.inputFields.map((field: any) => ({
+                name: field.key,
+                label: field.label,
+                placeholder: field.placeholder || '',
+                type: field.type,
+                required: field.required,
+                regex: field.regex,
+                helpText: field.helpText,
+                options: field.options.map((opt: any) => ({
+                    label: opt.label,
+                    value: opt.value,
+                })),
+            })),
+            inputFields: undefined, // Remove the raw database field
+        };
     }
 
     // Fetch games from external API (24payseller)
@@ -90,15 +157,31 @@ export class GamesService {
 
         const transformedGames = await Promise.all(
             games.map(async (game: any) => ({
-                id: game.id || game.key,
+                id: game.id || game.key || Math.random(),
                 name: game.name,
                 slug: game.key,
                 image: game.image || null,
                 category: await this.getGameCategory(game.key),
                 label: this.determineLabel(game.label || 'NONE'),
                 description: game.description || null,
-                items: game.items || [],
-                inputs: game.inputs || [],
+                packages: (game.items || []).map((item: any) => ({
+                    id: item.sku || item.id || item.key,
+                    name: item.name,
+                    description: item.description || null,
+                    count: item.name, // Use item name as count display
+                    price: typeof item.price === 'string' ? parseFloat(item.price) : (item.price || 0),
+                })),
+                fields: (game.inputs || []).map((input: any) => ({
+                    name: input.key || input.name,
+                    label: input.title || input.label || input.key,
+                    placeholder: input.placeholder || '',
+                    type: input.type || 'text',
+                    required: input.required !== false,
+                    options: (input.options || []).map((opt: any) => ({
+                        label: opt.label || opt.name,
+                        value: opt.value || opt.key,
+                    })),
+                })),
             }))
         );
 

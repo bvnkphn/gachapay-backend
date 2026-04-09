@@ -141,6 +141,7 @@ model Game {
 
   category    GameCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   packages    GamePackage[]
+  inputFields GameInputField[]
   orders      Order[]
 
   @@index([slug])
@@ -183,6 +184,46 @@ model GamePackage {
   @@index([gameId])
   @@index([isActive])
   @@map("game_packages")
+}
+
+model GameInputField {
+  id            BigInt   @id @default(autoincrement())
+  gameId        BigInt
+  key           String   @db.VarChar(100) // UID, ZONE_ID, SERVER, PASSWORD, etc.
+  label         String   @db.VarChar(255) // User ID, Zone ID, Server, Password, etc.
+  placeholder   String?  @db.VarChar(255)
+  type          String   @default("text") @db.VarChar(50) // text, email, number, password, select
+  required      Boolean  @default(true)
+  regex         String?  @db.VarChar(500) // Validation regex pattern
+  helpText      String?  @db.Text
+  order         Int      @default(0) // Display order
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now()) @db.Timestamp(0)
+  updatedAt     DateTime @updatedAt @db.Timestamp(0)
+
+  game          Game                      @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  options       GameInputFieldOption[]
+
+  @@index([gameId])
+  @@index([isActive])
+  @@unique([gameId, key])
+  @@map("game_input_fields")
+}
+
+model GameInputFieldOption {
+  id            BigInt   @id @default(autoincrement())
+  fieldId       BigInt
+  label         String   @db.VarChar(255) // Display text
+  value         String   @db.VarChar(500) // Actual value to save
+  order         Int      @default(0) // Display order
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now()) @db.Timestamp(0)
+
+  field         GameInputField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@index([fieldId])
+  @@index([isActive])
+  @@map("game_input_field_options")
 }
 
 model Banner {

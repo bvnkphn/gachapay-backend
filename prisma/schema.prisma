@@ -43,6 +43,7 @@ model User {
   transactions      Transaction[]
   passwordResets    PasswordReset[]
   otpRequests       OtpRequest[]
+  couponUsages      CouponUsage[]
   
   @@index([email])
   @@index([uuid])
@@ -242,4 +243,67 @@ model Banner {
   @@index([order])
   @@index([createdAt])
   @@map("banners")
+}
+
+enum CouponDiscountType {
+  FIXED       // Fixed discount amount
+  PERCENTAGE  // Percentage discount
+}
+
+enum CouponStatus {
+  ACTIVE
+  EXPIRED
+  INACTIVE
+}
+
+model Coupon {
+  id                  BigInt   @id @default(autoincrement())
+  uuid                String   @unique @default(uuid()) @db.Char(36)
+  code                String   @unique @db.VarChar(50)
+  description         String?  @db.Text
+  discountType        CouponDiscountType @default(FIXED)
+  discountValue       Decimal  @db.Decimal(10, 2)  // Amount or percentage based on discountType
+  minimumAmount       Decimal  @default(0) @db.Decimal(10, 2)
+  maximumUses         Int      @default(0)  // 0 = unlimited
+  currentUsageCount   Int      @default(0)
+  usagePerUser        Int      @default(1)  // Number of times a user can use this coupon
+  startDate           DateTime @db.Timestamp(0)
+  expiryDate          DateTime @db.Timestamp(0)
+  
+  // Available for specific games/packages
+  applicableGameIds   BigInt[]  // JSON array of game IDs (null/empty = all games)
+  applicablePackageIds BigInt[] // JSON array of package IDs (null/empty = all packages)
+  
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now()) @db.Timestamp(0)
+  updatedAt           DateTime @updatedAt @db.Timestamp(0)
+  
+  usages              CouponUsage[]
+  
+  @@index([code])
+  @@index([isActive])
+  @@index([startDate])
+  @@index([expiryDate])
+  @@map("coupons")
+}
+
+model CouponUsage {
+  id              BigInt   @id @default(autoincrement())
+  uuid            String   @unique @default(uuid()) @db.Char(36)
+  couponId        BigInt
+  userId          BigInt
+  usedAmount      Decimal  @db.Decimal(10, 2)
+  discountAmount  Decimal  @db.Decimal(10, 2)
+  orderId         BigInt?
+  usedAt          DateTime @default(now()) @db.Timestamp(0)
+  ipAddress       String?  @db.VarChar(45)
+  
+  coupon          Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([couponId, userId, orderId])
+  @@index([couponId])
+  @@index([userId])
+  @@index([usedAt])
+  @@map("coupon_usages")
 }

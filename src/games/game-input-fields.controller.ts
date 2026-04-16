@@ -1,6 +1,8 @@
 import { Controller, Get, Post, Body, Put, Delete, Param } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { GameInputFieldsService } from './game-input-fields.service';
 
+@ApiTags('Game Input Fields')
 @Controller('games')
 export class GameInputFieldsController {
     constructor(private fieldService: GameInputFieldsService) {}

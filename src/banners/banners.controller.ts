@@ -11,12 +11,14 @@ import {
     UseGuards,
     Req,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { BannersService } from './banners.service';
 import { CreateBannerDto, UpdateBannerDto } from './dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/decorators/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
+@ApiTags('Banners')
 @Controller('banners')
 export class BannersController {
     constructor(private readonly bannersService: BannersService) {}

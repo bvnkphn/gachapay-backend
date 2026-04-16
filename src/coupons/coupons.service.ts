@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { Decimal } from 'decimal.js';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCouponDto } from './dto/create-coupon.dto';
 import { ValidateCouponDto } from './dto/validate-coupon.dto';
@@ -157,7 +158,7 @@ export class CouponsService {
             return {
                 success: false,
                 message: 'เกิดข้อผิดพลาดในการตรวจสอบคูปอง',
-                errors: [error.message],
+                errors: [error instanceof Error ? error.message : String(error)],
             };
         }
     }

@@ -17,9 +17,9 @@ async function main() {
             isActive: true,
             packages: {
                 create: [
-                    { name: '100 Diamonds', price: 29, isActive: true },
-                    { name: '310 Diamonds', price: 79, isActive: true },
-                    { name: '520 Diamonds', price: 129, isActive: true },
+                    { sku: 'FF_100_DIAMONDS', name: '100 Diamonds', price: 29, isActive: true },
+                    { sku: 'FF_310_DIAMONDS', name: '310 Diamonds', price: 79, isActive: true },
+                    { sku: 'FF_520_DIAMONDS', name: '520 Diamonds', price: 129, isActive: true },
                 ],
             },
         },
@@ -36,9 +36,9 @@ async function main() {
             isActive: true,
             packages: {
                 create: [
-                    { name: '86 Diamonds', price: 29, isActive: true },
-                    { name: '172 Diamonds', price: 59, isActive: true },
-                    { name: '257 Diamonds', price: 89, isActive: true },
+                    { sku: 'ML_86_DIAMONDS', name: '86 Diamonds', price: 29, isActive: true },
+                    { sku: 'ML_172_DIAMONDS', name: '172 Diamonds', price: 59, isActive: true },
+                    { sku: 'ML_257_DIAMONDS', name: '257 Diamonds', price: 89, isActive: true },
                 ],
             },
         },

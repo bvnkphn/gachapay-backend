@@ -1,5 +1,5 @@
-import { IsString, IsNotEmpty, IsNumber, IsPositive, IsOptional, IsObject } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { IsString, IsNotEmpty, IsNumber, IsPositive, IsOptional, IsObject, IsDecimal } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 
 export class CreateOrderDto {
     @Transform(({ value }) => {
@@ -13,6 +13,10 @@ export class CreateOrderDto {
     @IsNotEmpty()
     gameId: bigint | string | number; // Can be numeric ID or slug
 
+    @IsString()
+    @IsNotEmpty()
+    gameName: string;
+
     @Transform(({ value }) => {
         // Accept both numeric IDs and string slugs
         if (typeof value === 'string') {
@@ -24,9 +28,18 @@ export class CreateOrderDto {
     @IsNotEmpty()
     packageId: bigint | string | number; // Can be numeric ID or slug
 
-    @IsObject()
+    @IsString()
     @IsNotEmpty()
-    userInput: Record<string, any>; // Game input fields (uid, credentials, etc.)
+    packageName: string;
+
+    @Type(() => Number)
+    @IsPositive()
+    @IsNotEmpty()
+    packagePrice: number;
+
+    @IsString()
+    @IsNotEmpty()
+    uid: string; // Game user ID
 
     @IsString()
     @IsOptional()

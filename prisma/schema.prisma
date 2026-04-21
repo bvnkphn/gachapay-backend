@@ -258,7 +258,6 @@ model Banner {
   @@map("banners")
 }
 
-<<<<<<< Updated upstream
 enum CouponDiscountType {
   FIXED       // Fixed discount amount
   PERCENTAGE  // Percentage discount
@@ -320,7 +319,8 @@ model CouponUsage {
   @@index([userId])
   @@index([usedAt])
   @@map("coupon_usages")
-=======
+}
+
 model PaymentMethod {
   id          BigInt   @id @default(autoincrement())
   code        String   @unique @db.VarChar(50)  // promptpay, truemoney
@@ -359,5 +359,4 @@ model TopupTransaction {
   @@index([createdAt])
   @@index([referenceId])
   @@map("topup_transactions")
->>>>>>> Stashed changes
 }

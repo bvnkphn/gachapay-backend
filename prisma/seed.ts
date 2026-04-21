@@ -6,6 +6,18 @@ const prisma = new PrismaClient();
 async function main() {
     const password = await bcrypt.hash('Test1234!', 10);
 
+    // --- Payment Methods ---
+    await prisma.paymentMethod.upsert({
+        where: { code: 'promptpay' },
+        update: {},
+        create: { code: 'promptpay', name: 'PromptPay (พร้อมเพย์)', icon: 'PP', color: '#1a56db', isActive: true },
+    });
+    await prisma.paymentMethod.upsert({
+        where: { code: 'truemoney' },
+        update: {},
+        create: { code: 'truemoney', name: 'TrueMoney Wallet', icon: 'TW', color: '#f97316', isActive: true },
+    });
+
     // --- Games & Packages ---
     const game1 = await prisma.game.upsert({
         where: { slug: 'free-fire' },

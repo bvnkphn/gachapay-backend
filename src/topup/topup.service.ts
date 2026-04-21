@@ -1,0 +1,170 @@
+import {
+    Injectable,
+    NotFoundException,
+    ConflictException,
+} from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateTopupDto } from './dto/create-topup.dto';
+
+const TOPUP_EXPIRE_MINUTES = 15;
+
+@Injectable()
+export class TopupService {
+    constructor(private prisma: PrismaService) { }
+
+    async getMethods() {
+        return this.prisma.paymentMethod.findMany({
+            where: { isActive: true },
+            select: { id: true, code: true, name: true, icon: true, color: true },
+            orderBy: { id: 'asc' },
+        });
+    }
+
+    async getTransactions(userId: bigint, status?: string, limit = 10, offset = 0) {
+        const where: any = { userId };
+        if (status) where.status = status;
+
+        const [total, items] = await Promise.all([
+            this.prisma.topupTransaction.count({ where }),
+            this.prisma.topupTransaction.findMany({
+                where,
+                orderBy: { createdAt: 'desc' },
+                take: limit,
+                skip: offset,
+                include: { method: { select: { code: true, name: true, icon: true, color: true } } },
+            }),
+        ]);
+
+        return {
+            total,
+            limit,
+            offset,
+            items: items.map((tx) => ({
+                id: tx.id.toString(),
+                reference_id: tx.referenceId,
+                amount: tx.amount,
+                status: tx.status,
+                created_at: tx.createdAt,
+                expired_at: tx.expiresAt,
+                completed_at: tx.completedAt,
+                method: tx.method,
+            })),
+        };
+    }
+
+    async createIntent(userId: bigint, dto: CreateTopupDto) {
+        const method = await this.prisma.paymentMethod.findUnique({
+            where: { code: dto.methodCode },
+        });
+        if (!method || !method.isActive) {
+            throw new NotFoundException(`Payment method '${dto.methodCode}' not found or inactive`);
+        }
+
+        // Double-submit guard: block if pending tx within last 2 min
+        const recentPending = await this.prisma.topupTransaction.findFirst({
+            where: {
+                userId,
+                status: 'pending',
+                createdAt: { gte: new Date(Date.now() - 2 * 60 * 1000) },
+            },
+        });
+        if (recentPending) {
+            throw new ConflictException('You have a pending transaction. Please wait before creating a new one.');
+        }
+
+        const referenceId = this.generateReferenceId();
+        const expiredAt = new Date(Date.now() + TOPUP_EXPIRE_MINUTES * 60 * 1000);
+        const paymentUrl = `gachapay://topup?ref=${referenceId}&amount=${dto.amount}&method=${dto.methodCode}`;
+
+        const tx = await this.prisma.topupTransaction.create({
+            data: { referenceId, userId, methodId: method.id, amount: dto.amount, status: 'pending', paymentUrl, expiresAt: expiredAt },
+            include: { method: { select: { code: true, name: true } } },
+        });
+
+        return {
+            transaction_id: tx.id.toString(),
+            reference_id: tx.referenceId,
+            amount: tx.amount,
+            status: tx.status,
+            payment_url: tx.paymentUrl,
+            expired_at: tx.expiresAt,
+            method: tx.method,
+        };
+    }
+
+    async expireStaleTransactions() {
+        await this.prisma.topupTransaction.updateMany({
+            where: { status: 'pending', expiresAt: { lt: new Date() } },
+            data: { status: 'expired' },
+        });
+    }
+
+    // DEV: simulate payment complete → update balance + points + tier
+    async simulateComplete(referenceId: string, userId: bigint) {
+        const tx = await this.prisma.topupTransaction.findUnique({ where: { referenceId } });
+        if (!tx || tx.userId !== userId) throw new NotFoundException('Transaction not found');
+        if (tx.status !== 'pending') throw new ConflictException(`Transaction is already '${tx.status}'`);
+
+        const amount = Number(tx.amount);
+        const pointsEarned = Math.floor(amount); // 1 บาท = 1 point
+
+        // ดึง point ปัจจุบันก่อน
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId },
+            select: { point_balance: true },
+        });
+        const newPoints = (user?.point_balance ?? 0) + pointsEarned;
+        const newTier = this.calculateTier(newPoints);
+
+        const [updated] = await this.prisma.$transaction([
+            this.prisma.topupTransaction.update({
+                where: { referenceId },
+                data: { status: 'completed', completedAt: new Date() },
+            }),
+            this.prisma.user.update({
+                where: { id: userId },
+                data: {
+                    wallet_balance: { increment: tx.amount },
+                    point_balance: newPoints,
+                    tier: newTier,
+                },
+            }),
+        ]);
+
+        return {
+            reference_id: updated.referenceId,
+            status: updated.status,
+            completed_at: updated.completedAt,
+            points_earned: pointsEarned,
+            new_points: newPoints,
+            new_tier: newTier,
+        };
+    }
+
+    // DEV: simulate payment cancel
+    async simulateCancel(referenceId: string, userId: bigint) {
+        const tx = await this.prisma.topupTransaction.findUnique({ where: { referenceId } });
+        if (!tx || tx.userId !== userId) throw new NotFoundException('Transaction not found');
+        if (tx.status !== 'pending') throw new ConflictException(`Transaction is already '${tx.status}'`);
+
+        const updated = await this.prisma.topupTransaction.update({
+            where: { referenceId },
+            data: { status: 'failed' },
+        });
+
+        return { reference_id: updated.referenceId, status: updated.status };
+    }
+
+    private calculateTier(points: number): string {
+        if (points >= 50000) return 'PLATINUM';
+        if (points >= 10000) return 'GOLD';
+        if (points >= 1000) return 'SILVER';
+        return 'BRONZE';
+    }
+
+    private generateReferenceId(): string {
+        const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const rand = Math.random().toString(36).substring(2, 7).toUpperCase();
+        return `TP-${date}-${rand}`;
+    }
+}

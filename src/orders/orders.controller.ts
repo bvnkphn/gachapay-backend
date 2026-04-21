@@ -14,11 +14,13 @@ export class OrdersController {
         private externalGameService: ExternalGameService,
     ) { }
 
+    // GET /orders — list all orders for current user
     @Get()
     async findAll(@Req() req: any) {
         return this.ordersService.findAll(req.user.id);
     }
 
+<<<<<<< Updated upstream
     @Get(':id')
     async findOne(@Param('id') id: string) {
         const order = await this.ordersService.findById(BigInt(id));
@@ -65,9 +67,33 @@ export class OrdersController {
         });
     }
 
+=======
+    // GET /orders/me/recent — recent 5 orders
+>>>>>>> Stashed changes
     @Get('me/recent')
     async getRecentOrders(@Req() req: any) {
         const recent = await this.ordersService.findRecentByUser(req.user.id);
         return { recent_orders: recent };
+    }
+
+    // GET /orders/:id — order detail with ownership check
+    @Get(':id')
+    async findOne(@Param('id') id: string, @Req() req: any) {
+        return this.ordersService.findByIdForUser(BigInt(id), req.user.id);
+    }
+
+    // POST /orders — create order
+    @Post()
+    async create(@Req() req: any, @Body() dto: CreateOrderDto) {
+        return this.ordersService.create({
+            userId: req.user.id,
+            gameId: dto.gameId as any,
+            gameName: dto.gameName,
+            packageId: dto.packageId as any,
+            packageName: dto.packageName,
+            packagePrice: dto.packagePrice,
+            uid: dto.uid,
+            paymentMethod: dto.paymentMethod,
+        });
     }
 }

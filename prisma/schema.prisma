@@ -45,6 +45,8 @@ model User {
   otpRequests       OtpRequest[]
   couponUsages      CouponUsage[]
   
+  topupTransactions TopupTransaction[]
+
   @@index([email])
   @@index([uuid])
   @@index([provider, providerId])
@@ -256,6 +258,7 @@ model Banner {
   @@map("banners")
 }
 
+<<<<<<< Updated upstream
 enum CouponDiscountType {
   FIXED       // Fixed discount amount
   PERCENTAGE  // Percentage discount
@@ -317,4 +320,44 @@ model CouponUsage {
   @@index([userId])
   @@index([usedAt])
   @@map("coupon_usages")
+=======
+model PaymentMethod {
+  id          BigInt   @id @default(autoincrement())
+  code        String   @unique @db.VarChar(50)  // promptpay, truemoney
+  name        String   @db.VarChar(100)
+  description String?  @db.VarChar(255)
+  icon        String?  @db.VarChar(50)
+  color       String?  @db.VarChar(20)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamp(0)
+  updatedAt   DateTime @updatedAt @db.Timestamp(0)
+
+  topupTransactions TopupTransaction[]
+
+  @@index([isActive])
+  @@map("payment_methods")
+}
+
+model TopupTransaction {
+  id            BigInt    @id @default(autoincrement())
+  referenceId   String    @unique @db.VarChar(50)  // TP-YYYYMMDD-XXXXX
+  userId        BigInt
+  methodId      BigInt
+  amount        Decimal   @db.Decimal(10, 2)
+  status        String    @default("pending") @db.VarChar(20) // pending, completed, failed, expired
+  paymentUrl    String?   @db.VarChar(500)
+  expiresAt     DateTime? @db.Timestamp(0) @map("expires_at")
+  completedAt   DateTime? @db.Timestamp(0)
+  createdAt     DateTime  @default(now()) @db.Timestamp(0)
+  updatedAt     DateTime  @updatedAt @db.Timestamp(0)
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  method        PaymentMethod @relation(fields: [methodId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([referenceId])
+  @@map("topup_transactions")
+>>>>>>> Stashed changes
 }

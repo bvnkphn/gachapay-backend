@@ -8,7 +8,11 @@ import { GamesModule } from './games/games.module';
 import { CategoriesModule } from './categories/categories.module';
 import { BannersModule } from './banners/banners.module';
 import { WalletsModule } from './wallets/wallets.module';
+<<<<<<< Updated upstream
 import { CouponsModule } from './coupons/coupons.module';
+=======
+import { TopupModule } from './topup/topup.module';
+>>>>>>> Stashed changes
 
 @Module({
     imports: [
@@ -23,7 +27,11 @@ import { CouponsModule } from './coupons/coupons.module';
         CategoriesModule,
         BannersModule,
         WalletsModule,
+<<<<<<< Updated upstream
         CouponsModule,
+=======
+        TopupModule,
+>>>>>>> Stashed changes
     ],
 })
 export class AppModule { }

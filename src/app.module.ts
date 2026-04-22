@@ -10,6 +10,8 @@ import { BannersModule } from './banners/banners.module';
 import { WalletsModule } from './wallets/wallets.module';
 import { CouponsModule } from './coupons/coupons.module';
 import { TopupModule } from './topup/topup.module';
+import { PaymentModule } from './payments/payment.module';
+import { WebhookModule } from './webhooks/webhook.module';
 
 @Module({
     imports: [
@@ -26,6 +28,8 @@ import { TopupModule } from './topup/topup.module';
         WalletsModule,
         CouponsModule,
         TopupModule,
+        PaymentModule,
+        WebhookModule,
     ],
 })
 export class AppModule { }

@@ -111,4 +111,48 @@ export class OrdersService {
             created_at: o.createdAt,
         }));
     }
+
+    /**
+     * Prepare order data for payment page
+     * เตรียมข้อมูลคำสั่งซื้อสำหรับหน้าชำระเงิน
+     */
+    async prepareOrderForPayment(orderId: bigint, userId: bigint) {
+        const order = await this.prisma.order.findUnique({
+            where: { id: orderId },
+            include: {
+                game: { select: { name: true, slug: true } },
+                package: { select: { name: true, price: true, description: true } },
+            },
+        });
+
+        if (!order) throw new NotFoundException('Order not found');
+        if (order.userId !== userId) throw new ForbiddenException('Access denied');
+
+        return {
+            success: true,
+            data: {
+                orderId: order.id.toString(),
+                orderDetails: {
+                    gameName: order.gameName,
+                    packageName: order.packageName,
+                    packageDescription: order.package?.description,
+                },
+                packageId: order.packageId.toString(),
+                playerInformation: {
+                    userId: order.userId.toString(),
+                    email: order.email,
+                    gameUid: order.uid,
+                },
+                email: order.email,
+                couponCode: order.couponCode,
+                amounts: {
+                    originalPrice: order.packagePrice,
+                    discountAmount: order.discountAmount || 0,
+                    finalPrice: order.finalPrice || order.packagePrice,
+                },
+                createdAt: order.createdAt,
+                status: order.status,
+            },
+        };
+    }
 }

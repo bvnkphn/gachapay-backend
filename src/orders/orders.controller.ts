@@ -47,4 +47,17 @@ export class OrdersController {
             paymentMethod: dto.paymentMethod || undefined,
         });
     }
+
+    // GET /orders/prepare-payment — prepare order for payment
+    @Get('prepare-payment')
+    async preparePayment(@Req() req: any) {
+        const orderId = req.query.orderId;
+        const userId = req.query.userId || req.user.id;
+
+        if (!orderId) {
+            throw new BadRequestException('Order ID is required');
+        }
+
+        return this.ordersService.prepareOrderForPayment(BigInt(orderId), BigInt(userId));
+    }
 }

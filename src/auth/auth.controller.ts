@@ -3,7 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { Response } from 'express';
 import { AuthService } from './auth.service';
-import { RegisterDto, LoginDto, ForgotPasswordDto, ResetPasswordDto, SendOtpDto, VerifyOtpDto } from './dto';
+import { RegisterDto, LoginDto, ForgotPasswordDto, ResetPasswordDto, SendOtpDto, VerifyOtpDto, VerifyAdminOtpDto } from './dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @ApiTags('Auth')
@@ -39,6 +39,11 @@ export class AuthController {
     @Post('verify-otp')
     async verifyOtp(@Body() verifyOtpDto: VerifyOtpDto) {
         return this.authService.verifyOtp(verifyOtpDto);
+    }
+
+    @Post('verify-admin-otp')
+    async verifyAdminOtp(@Body() body: VerifyAdminOtpDto) {
+        return this.authService.verifyAdminOtp(body.userId, body.otp);
     }
 
     @Get('google')

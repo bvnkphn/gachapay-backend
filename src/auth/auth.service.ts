@@ -58,7 +58,61 @@ export class AuthService {
             throw new UnauthorizedException('Invalid credentials');
         }
 
-        // Generate token
+        // Check if admin role - require OTP
+        if (user.role === 'ADMIN') {
+            // Generate 6-digit OTP
+            const otp = Math.floor(100000 + Math.random() * 900000).toString();
+            const otpHash = await bcrypt.hash(otp, 10);
+            const expiresAt = new Date(Date.now() + 600000); // 10 minutes
+
+            await this.usersService.createOtpRequest({
+                user_id: user.id,
+                otp_hash: otpHash,
+                expires_at: expiresAt,
+            });
+
+            await this.emailService.sendOtpEmail(user.email, otp);
+
+            return {
+                requireOtp: true,
+                userId: user.uuid,
+                message: 'ส่ง OTP ไปที่ Email แล้ว',
+            };
+        }
+
+        // Regular user - return token directly
+        const token = this.generateToken(user.uuid, user.email);
+
+        return {
+            requireOtp: false,
+            user: this.sanitizeUser(user),
+            token,
+        };
+    }
+
+    async verifyAdminOtp(userId: string, otp: string) {
+        const user = await this.usersService.findById(userId);
+        if (!user) {
+            throw new UnauthorizedException('Invalid user');
+        }
+
+        const otpRecord = await this.usersService.findValidOtpRequest(user.id);
+        if (!otpRecord) {
+            throw new BadRequestException('No valid OTP found. Please login again');
+        }
+
+        if (otpRecord.attempt_count >= 5) {
+            throw new BadRequestException('Too many failed attempts. Please login again');
+        }
+
+        const isOtpValid = await bcrypt.compare(otp, otpRecord.otp_hash);
+        if (!isOtpValid) {
+            await this.usersService.incrementOtpAttempts(otpRecord.id);
+            throw new BadRequestException('Invalid OTP');
+        }
+
+        await this.usersService.deleteOtpRequest(otpRecord.id);
+
         const token = this.generateToken(user.uuid, user.email);
 
         return {

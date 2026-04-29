@@ -85,6 +85,38 @@ export class OrdersService {
         return this.prisma.order.findUnique({ where: { id } });
     }
 
+    // GET all orders for Admin Dashboard
+    async findAllForAdmin() {
+        const orders = await this.prisma.order.findMany({
+            orderBy: { createdAt: 'desc' },
+            take: 100,
+            select: {
+                id: true,
+                uid: true,
+                gameName: true,
+                packageName: true,
+                packagePrice: true,
+                finalPrice: true,
+                paymentMethod: true,
+                status: true,
+                createdAt: true,
+                email: true,
+            },
+        });
+
+        return orders.map((o) => ({
+            order_id: o.id.toString(),
+            uid: o.uid,
+            game: o.gameName,
+            pkg: o.packageName,
+            amount: Number(o.finalPrice ?? o.packagePrice),
+            method: o.paymentMethod ?? 'unknown',
+            status: o.status,
+            created_at: o.createdAt,
+            email: o.email,
+        }));
+    }
+
     async update(id: bigint, data: Prisma.OrderUpdateInput) {
         return this.prisma.order.update({ where: { id }, data });
     }

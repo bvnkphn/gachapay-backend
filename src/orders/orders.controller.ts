@@ -20,6 +20,12 @@ export class OrdersController {
         return this.ordersService.findAll(req.user.id);
     }
 
+    // GET /orders/admin/all — all orders for Admin Dashboard
+    @Get('admin/all')
+    async findAllForAdmin() {
+        return this.ordersService.findAllForAdmin();
+    }
+
     // GET /orders/me/recent — recent 5 orders
     @Get('me/recent')
     async getRecentOrders(@Req() req: any) {

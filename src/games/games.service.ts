@@ -23,6 +23,41 @@ export class GamesService {
         });
     }
 
+    // เปิด/ปิดสถานะเกม
+    async toggleGameStatus(id: bigint) {
+        const game = await this.prisma.game.findUnique({ where: { id } });
+        if (!game) throw new Error('Game not found');
+        return this.prisma.game.update({
+            where: { id },
+            data: { isActive: !game.isActive },
+        });
+    }
+
+    // เช็คสถานะ API ของเกม (ping external API)
+    async checkGameApiStatus(slug: string) {
+        try {
+            const res = await fetch(`https://x.24payseller.com/products/list`, { signal: AbortSignal.timeout(5000) });
+            return { slug, online: res.ok, checkedAt: new Date() };
+        } catch {
+            return { slug, online: false, checkedAt: new Date() };
+        }
+    }
+
+    // สร้างเกมใหม่
+    async createGame(data: any) {
+        return this.prisma.game.create({
+            data: {
+                name: data.name,
+                slug: data.slug ?? data.name.toLowerCase().replace(/\s+/g, '-'),
+                description: data.description,
+                image: data.image,
+                categoryId: data.categoryId ? BigInt(data.categoryId) : null,
+                label: data.label ?? 'NONE',
+                isActive: data.isActive ?? true,
+            },
+        });
+    }
+
     async findBySlug(slug: string) {
         // Try to find in database first
         const dbGame = await this.prisma.game.findUnique({

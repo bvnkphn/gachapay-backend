@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Query, Body } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { GamesService } from './games.service';
 import { ExternalGameService } from './external-game.service';
@@ -56,5 +56,23 @@ export class GamesController {
     async findOne(@Param('slug') slug: string) {
         const game = await this.gamesService.findBySlug(slug);
         return { data: game };
+    }
+
+    // PATCH /games/:id/toggle — เปิด/ปิดเกม
+    @Patch(':id/toggle')
+    async toggleGame(@Param('id') id: string) {
+        return this.gamesService.toggleGameStatus(BigInt(id));
+    }
+
+    // GET /games/:slug/api-status — เช็คสถานะ API ของเกม
+    @Get(':slug/api-status')
+    async checkApiStatus(@Param('slug') slug: string) {
+        return this.gamesService.checkGameApiStatus(slug);
+    }
+
+    // POST /games/admin — สร้างเกมใหม่
+    @Post('admin')
+    async createGame(@Body() body: any) {
+        return this.gamesService.createGame(body);
     }
 }

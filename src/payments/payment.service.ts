@@ -18,14 +18,14 @@ export class PaymentService {
         // Get user wallet balance
         const user = await this.prisma.user.findUnique({
             where: { id: userId },
-            select: { walletBalance: true },
+            select: { wallet_balance: true },
         });
 
         if (!user) {
             throw new BadRequestException('User not found');
         }
 
-        if (user.walletBalance < amount) {
+        if (user.wallet_balance.toNumber() < amount) {
             return {
                 success: false,
                 message: 'Insufficient wallet balance',
@@ -36,7 +36,7 @@ export class PaymentService {
         // Deduct from wallet
         await this.prisma.user.update({
             where: { id: userId },
-            data: { walletBalance: { decrement: amount } },
+            data: { wallet_balance: { decrement: amount } },
         });
 
         // Update order status
@@ -156,7 +156,7 @@ export class PaymentService {
         if (status === 'completed') {
             await this.prisma.user.update({
                 where: { id: userId },
-                data: { walletBalance: { increment: amount } },
+                data: { wallet_balance: { increment: amount } },
             });
         }
 
@@ -174,7 +174,7 @@ export class PaymentService {
     async getWalletBalance(userId: bigint) {
         const user = await this.prisma.user.findUnique({
             where: { id: userId },
-            select: { walletBalance: true },
+            select: { wallet_balance: true },
         });
 
         if (!user) {
@@ -185,7 +185,7 @@ export class PaymentService {
             success: true,
             message: 'Wallet balance retrieved',
             data: {
-                balance: user.walletBalance,
+                balance: user.wallet_balance,
                 currency: 'THB',
             },
         };

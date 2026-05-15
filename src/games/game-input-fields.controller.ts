@@ -1,8 +1,12 @@
-import { Controller, Get, Post, Body, Put, Delete, Param } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { Controller, Get, Post, Body, Put, Delete, Param, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { GameInputFieldsService } from './game-input-fields.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AdminGuard } from '../auth/guards/admin.guard';
 
 @ApiTags('Game Input Fields')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, AdminGuard)
 @Controller('games')
 export class GameInputFieldsController {
     constructor(private fieldService: GameInputFieldsService) {}

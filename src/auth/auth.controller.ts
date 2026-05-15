@@ -17,8 +17,10 @@ export class AuthController {
     }
 
     @Post('login')
-    async login(@Body() loginDto: LoginDto) {
-        return this.authService.login(loginDto);
+    async login(@Body() loginDto: LoginDto, @Req() req: any) {
+        const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress;
+        const ua = req.headers['user-agent'];
+        return this.authService.login(loginDto, ip, ua);
     }
 
     @Post('forgot-password')
@@ -42,8 +44,10 @@ export class AuthController {
     }
 
     @Post('verify-admin-otp')
-    async verifyAdminOtp(@Body() body: VerifyAdminOtpDto) {
-        return this.authService.verifyAdminOtp(body.userId, body.otp);
+    async verifyAdminOtp(@Body() body: VerifyAdminOtpDto, @Req() req: any) {
+        const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress;
+        const ua = req.headers['user-agent'];
+        return this.authService.verifyAdminOtp(body.userId, body.otp, ip, ua);
     }
 
     @Get('google')

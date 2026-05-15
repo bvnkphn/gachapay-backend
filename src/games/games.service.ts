@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CategoriesService } from '../categories/categories.service';
+import { ExternalGameService } from './external-game.service';
 
 @Injectable()
 export class GamesService {
     constructor(
         private prisma: PrismaService,
         private categoriesService: CategoriesService,
+        private externalGameService: ExternalGameService,
     ) {}
 
     async findAll() {
@@ -33,12 +35,20 @@ export class GamesService {
         });
     }
 
-    // เช็คสถานะ API ของเกม (ping external API)
+    // เช็คสถานะ API ของเกม
+    // — ใช้ ExternalGameService ที่ cache ไว้แล้ว แทนการ fetch ใหม่ทุกครั้ง
+    // — ถ้าเกมมีอยู่ใน external API = Online, ไม่มี = Offline
     async checkGameApiStatus(slug: string) {
         try {
-            const res = await fetch(`https://x.24payseller.com/products/list`, { signal: AbortSignal.timeout(5000) });
-            return { slug, online: res.ok, checkedAt: new Date() };
+            // ลอง fetch ผ่าน ExternalGameService (มี cache 1 ชั่วโมง)
+            const game = await this.externalGameService.fetchGameBySlug(slug);
+            return {
+                slug,
+                online: game !== null,
+                checkedAt: new Date(),
+            };
         } catch {
+            // ถ้า fetch ไม่ได้เลย (network error, timeout) ถือว่า Offline
             return { slug, online: false, checkedAt: new Date() };
         }
     }
@@ -54,6 +64,20 @@ export class GamesService {
                 categoryId: data.categoryId ? BigInt(data.categoryId) : null,
                 label: data.label ?? 'NONE',
                 isActive: data.isActive ?? true,
+            },
+        });
+    }
+
+    // แก้ไขข้อมูลเกม
+    async updateGame(id: bigint, data: any) {
+        return this.prisma.game.update({
+            where: { id },
+            data: {
+                name: data.name,
+                description: data.description,
+                image: data.image,
+                categoryId: data.categoryId ? BigInt(data.categoryId) : null,
+                label: data.label,
             },
         });
     }
@@ -78,27 +102,32 @@ export class GamesService {
 
         // Fallback: Fetch from external API if not in database
         try {
-            const response = await fetch(
-                'https://x.24payseller.com/products/list',
-            );
+            const game = await this.externalGameService.fetchGameBySlug(slug);
+            if (!game) return null;
 
-            if (!response.ok) {
-                throw new Error(
-                    `Failed to fetch games: ${response.statusText}`,
-                );
-            }
-
-            const rawData = await response.json();
-            const transformedData = await this.transformGameData(rawData);
-
-            // Find the game by slug in transformed data
-            const game = transformedData.data.find((g: any) => g.slug === slug);
-
-            if (game) {
-                return game;
-            }
-
-            return null;
+            return {
+                id: game.key,
+                name: game.name,
+                slug: game.key,
+                image: null,
+                packages: (game.items || []).map((item: any) => ({
+                    id: item.sku,
+                    name: item.name,
+                    price: parseFloat(item.price) || 0,
+                })),
+                fields: (game.inputs || []).map((input: any) => ({
+                    name: input.key,
+                    label: input.title || input.key,
+                    placeholder: input.placeholder || '',
+                    type: input.type || 'text',
+                    required: true,
+                    regex: input.regex ?? null,
+                    options: (input.options || []).map((opt: any) => ({
+                        label: opt.label,
+                        value: opt.value,
+                    })),
+                })),
+            };
         } catch (error) {
             console.error('Error fetching game from external API:', error);
             return null;
@@ -121,7 +150,7 @@ export class GamesService {
                     value: opt.value,
                 })),
             })),
-            inputFields: undefined, // Remove the raw database field
+            inputFields: undefined,
         };
     }
 
@@ -133,23 +162,11 @@ export class GamesService {
         pageSize: number = 20,
     ) {
         try {
-            const response = await fetch(
-                'https://x.24payseller.com/products/list',
-            );
+            const allGames = await this.externalGameService.fetchGames();
+            const transformedData = await this.transformGameData(allGames);
 
-            if (!response.ok) {
-                throw new Error(
-                    `Failed to fetch games: ${response.statusText}`,
-                );
-            }
-
-            const rawData = await response.json();
-
-            // Transform the data first
-            const transformedData = await this.transformGameData(rawData);
-
-            // Filter by search (game name)
             let filteredGames = transformedData.data;
+
             if (search) {
                 const searchLower = search.toLowerCase();
                 filteredGames = filteredGames.filter((game) =>
@@ -157,14 +174,12 @@ export class GamesService {
                 );
             }
 
-            // Filter by category
             if (category && category !== 'all') {
                 filteredGames = filteredGames.filter(
                     (game) => game.category === category,
                 );
             }
 
-            // Calculate pagination
             const totalItems = filteredGames.length;
             const totalPages = Math.ceil(totalItems / pageSize);
             const skip = (page - 1) * pageSize;
@@ -186,10 +201,7 @@ export class GamesService {
     }
 
     // Transform external API response to match our format
-    private async transformGameData(rawData: any) {
-        // Handle different response structures
-        const games = Array.isArray(rawData) ? rawData : rawData?.data || [];
-
+    private async transformGameData(games: any[]) {
         const transformedGames = await Promise.all(
             games.map(async (game: any) => ({
                 id: game.id || game.key || Math.random(),
@@ -203,7 +215,7 @@ export class GamesService {
                     id: item.sku || item.id || item.key,
                     name: item.name,
                     description: item.description || null,
-                    count: item.name, // Use item name as count display
+                    count: item.name,
                     price: typeof item.price === 'string' ? parseFloat(item.price) : (item.price || 0),
                 })),
                 fields: (game.inputs || []).map((input: any) => ({
@@ -222,117 +234,66 @@ export class GamesService {
 
         return {
             data: transformedGames.filter((game) => game.name),
-            pagination: rawData?.pagination || {
-                current_page: 1,
-                total_pages: 1,
-                total_items: games.length,
-            },
         };
     }
 
-    // Get category for a game by keyword matching - mapped to 6 allowed categories
+    // Get category for a game by keyword matching
     private async getGameCategory(gameKey: string): Promise<string> {
         const keyLower = gameKey.toLowerCase();
 
-        // Action / Shooter
         if (
-            keyLower.includes('call-of-duty') ||
-            keyLower.includes('blood-strike') ||
-            keyLower.includes('crossfire') ||
-            keyLower.includes('delta-force') ||
-            keyLower.includes('free-fire') ||
-            keyLower.includes('pubg') ||
-            keyLower.includes('snowbreak') ||
-            keyLower.includes('valorant') ||
-            keyLower.includes('ballistic') ||
-            keyLower.includes('arena-breakout') ||
-            keyLower.includes('breakout') ||
-            keyLower.includes('bleach') ||
-            keyLower.includes('one-punch-man') ||
-            keyLower.includes('samkok') ||
-            keyLower.includes('sausage') ||
-            keyLower.includes('dream-and-lethe') ||
+            keyLower.includes('call-of-duty') || keyLower.includes('blood-strike') ||
+            keyLower.includes('crossfire') || keyLower.includes('delta-force') ||
+            keyLower.includes('free-fire') || keyLower.includes('pubg') ||
+            keyLower.includes('snowbreak') || keyLower.includes('valorant') ||
+            keyLower.includes('ballistic') || keyLower.includes('arena-breakout') ||
+            keyLower.includes('breakout') || keyLower.includes('bleach') ||
+            keyLower.includes('one-punch-man') || keyLower.includes('samkok') ||
+            keyLower.includes('sausage') || keyLower.includes('dream-and-lethe') ||
             keyLower.includes('metal-slug')
-        )
-            return 'Action / Shooter';
+        ) return 'Action / Shooter';
 
-        // MOBA / Strategy
         if (
-            keyLower.includes('mobile-legends') ||
-            keyLower.includes('rov') ||
-            keyLower.includes('honor-of-kings') ||
-            keyLower.includes('magic-chess') ||
-            keyLower.includes('onmyoji-arena') ||
-            keyLower.includes('draconia') ||
-            keyLower.includes('haikyu') ||
-            keyLower.includes('revelation-mobile')
-        )
-            return 'MOBA / Strategy';
+            keyLower.includes('mobile-legends') || keyLower.includes('rov') ||
+            keyLower.includes('honor-of-kings') || keyLower.includes('magic-chess') ||
+            keyLower.includes('onmyoji-arena') || keyLower.includes('draconia') ||
+            keyLower.includes('haikyu') || keyLower.includes('revelation-mobile')
+        ) return 'MOBA / Strategy';
 
-        // RPG / Open World / MMO
         if (
-            keyLower.includes('impact') ||
-            keyLower.includes('gazer') ||
-            keyLower.includes('aether') ||
-            keyLower.includes('afk-journey') ||
-            keyLower.includes('journey') ||
-            keyLower.includes('dragon') ||
-            keyLower.includes('forsaken') ||
-            keyLower.includes('echo') ||
-            keyLower.includes('honkai') ||
-            keyLower.includes('love-and-deepspace') ||
-            keyLower.includes('punishing-gray-raven') ||
-            keyLower.includes('ragnarok') ||
-            keyLower.includes('wuthering') ||
-            keyLower.includes('zenless') ||
-            keyLower.includes('jujutsu') ||
-            keyLower.includes('lord-of') ||
-            keyLower.includes('lineage') ||
-            keyLower.includes('mu-new-dawn') ||
-            keyLower.includes('rememento') ||
-            keyLower.includes('silver-and-blood') ||
-            keyLower.includes('where-winds-meet') ||
-            keyLower.includes('crystal-of-atlan') ||
-            keyLower.includes('echocalypse') ||
-            keyLower.includes('mecha-break') ||
+            keyLower.includes('impact') || keyLower.includes('gazer') ||
+            keyLower.includes('aether') || keyLower.includes('afk-journey') ||
+            keyLower.includes('journey') || keyLower.includes('dragon') ||
+            keyLower.includes('forsaken') || keyLower.includes('echo') ||
+            keyLower.includes('honkai') || keyLower.includes('love-and-deepspace') ||
+            keyLower.includes('punishing-gray-raven') || keyLower.includes('ragnarok') ||
+            keyLower.includes('wuthering') || keyLower.includes('zenless') ||
+            keyLower.includes('jujutsu') || keyLower.includes('lord-of') ||
+            keyLower.includes('lineage') || keyLower.includes('mu-new-dawn') ||
+            keyLower.includes('rememento') || keyLower.includes('silver-and-blood') ||
+            keyLower.includes('where-winds-meet') || keyLower.includes('crystal-of-atlan') ||
+            keyLower.includes('echocalypse') || keyLower.includes('mecha-break') ||
             keyLower.includes('sword-of-justice')
-        )
-            return 'RPG / Open World / MMO';
+        ) return 'RPG / Open World / MMO';
 
-        // Sports / Racing
         if (
-            keyLower.includes('racer') ||
-            keyLower.includes('racing') ||
-            keyLower.includes('race') ||
-            keyLower.includes('dunk') ||
-            keyLower.includes('fc-mobile') ||
-            keyLower.includes('speed-drifters') ||
-            keyLower.includes('top-eleven') ||
-            keyLower.includes('football')
-        )
-            return 'Sports / Racing';
+            keyLower.includes('racer') || keyLower.includes('racing') ||
+            keyLower.includes('race') || keyLower.includes('dunk') ||
+            keyLower.includes('fc-mobile') || keyLower.includes('speed-drifters') ||
+            keyLower.includes('top-eleven') || keyLower.includes('football')
+        ) return 'Sports / Racing';
 
-        // Social / Casual / Simulation
         if (
-            keyLower.includes('bigo') ||
-            keyLower.includes('eggy') ||
-            keyLower.includes('hearttopia') ||
-            keyLower.includes('kings-choice') ||
-            keyLower.includes('marvel-snap') ||
-            keyLower.includes('paw-tales') ||
-            keyLower.includes('roblox') ||
-            keyLower.includes('super-sus') ||
-            keyLower.includes('zepeto') ||
-            keyLower.includes('lordnine') ||
-            keyLower.includes('ghost-story') ||
-            keyLower.includes('harry-potter') ||
-            keyLower.includes('magic-awakened') ||
-            keyLower.includes('identity') ||
+            keyLower.includes('bigo') || keyLower.includes('eggy') ||
+            keyLower.includes('hearttopia') || keyLower.includes('kings-choice') ||
+            keyLower.includes('marvel-snap') || keyLower.includes('paw-tales') ||
+            keyLower.includes('roblox') || keyLower.includes('super-sus') ||
+            keyLower.includes('zepeto') || keyLower.includes('lordnine') ||
+            keyLower.includes('ghost-story') || keyLower.includes('harry-potter') ||
+            keyLower.includes('magic-awakened') || keyLower.includes('identity') ||
             keyLower.includes('legend-of-ymir')
-        )
-            return 'Social / Casual / Simulation';
+        ) return 'Social / Casual / Simulation';
 
-        // Other - default
         return 'Other';
     }
 
@@ -343,7 +304,6 @@ export class GamesService {
             return categories.map((c) => c.name);
         } catch (error) {
             console.error('Error fetching categories:', error);
-            // Return default categories on error
             return ['All', 'Action', 'MOBA', 'Other', 'Racing', 'RPG', 'Shooter', 'Social'];
         }
     }
@@ -355,6 +315,65 @@ export class GamesService {
         if (normalizedTag.includes('NEW')) return 'NEW';
         if (normalizedTag.includes('SALE')) return 'SALE';
         return 'NONE';
+    }
+
+    // ตั้งค่า UID Format (regex pattern) ของ input field ในเกม
+    async updateUidFormat(gameId: bigint, data: { fieldKey: string; regex: string; helpText?: string }) {
+        const game = await this.prisma.game.findUnique({ where: { id: gameId } });
+        if (!game) throw new Error('ไม่พบเกมที่ระบุ');
+
+        const field = await this.prisma.gameInputField.findUnique({
+            where: { gameId_key: { gameId, key: data.fieldKey } },
+        });
+        if (!field) throw new Error(`ไม่พบ input field "${data.fieldKey}" ในเกมนี้`);
+
+        try {
+            new RegExp(data.regex);
+        } catch {
+            throw new Error('รูปแบบ Regex ไม่ถูกต้อง');
+        }
+
+        const updated = await this.prisma.gameInputField.update({
+            where: { id: field.id },
+            data: {
+                regex: data.regex,
+                helpText: data.helpText ?? field.helpText,
+            },
+        });
+
+        return {
+            success: true,
+            gameId: gameId.toString(),
+            fieldKey: data.fieldKey,
+            regex: updated.regex,
+            helpText: updated.helpText,
+        };
+    }
+
+    // ดู UID Format ทั้งหมดของเกม
+    async getUidFormats(gameId: bigint) {
+        const game = await this.prisma.game.findUnique({ where: { id: gameId } });
+        if (!game) throw new Error('ไม่พบเกมที่ระบุ');
+
+        const fields = await this.prisma.gameInputField.findMany({
+            where: { gameId, isActive: true },
+            select: {
+                id: true,
+                key: true,
+                label: true,
+                type: true,
+                regex: true,
+                helpText: true,
+                required: true,
+            },
+            orderBy: { order: 'asc' },
+        });
+
+        return {
+            gameId: gameId.toString(),
+            gameName: game.name,
+            fields,
+        };
     }
 
     // Generate slug from name

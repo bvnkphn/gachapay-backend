@@ -1,6 +1,8 @@
-import { Controller, Post, Body, Get } from '@nestjs/common';
-import { ApiTags, ApiBody } from '@nestjs/swagger';
+import { Controller, Post, Body, Get, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { GameImportService } from './game-import.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AdminGuard } from '../auth/guards/admin.guard';
 
 interface ExternalGame {
   name: string;
@@ -25,36 +27,14 @@ interface ExternalGame {
 }
 
 @ApiTags('Game Management')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, AdminGuard)
 @Controller('games')
 export class GameImportController {
   constructor(private gameImportService: GameImportService) {}
 
   /**
-   * Import games from external API data
-   * 
-   * Expected format:
-   * [{
-   *   "name": "Game Name",
-   *   "key": "game-slug",
-   *   "items": [
-   *     {
-   *       "name": "Package Name",
-   *       "sku": "unique-sku",
-   *       "price": "27.5",
-   *       "originalPrice": "30"
-   *     }
-   *   ],
-   *   "inputs": [
-   *     {
-   *       "key": "uid",
-   *       "title": "User ID",
-   *       "type": "text",
-   *       "placeholder": "Enter UID",
-   *       "regex": null,
-   *       "options": []
-   *     }
-   *   ]
-   * }]
+   * Import games from external API data (Admin only)
    */
   @Post('import')
   @ApiBody({
@@ -114,7 +94,7 @@ export class GameImportController {
   }
 
   /**
-   * Get mapping schema reference
+   * Get mapping schema reference (Admin only)
    */
   @Get('mapping-schema')
   getMappingSchema() {

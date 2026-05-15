@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { UsersService } from '../users/users.service';
 import { EmailService } from './email.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto, LoginDto, ForgotPasswordDto, ResetPasswordDto, SendOtpDto, VerifyOtpDto } from './dto';
 
 @Injectable()
@@ -13,7 +14,17 @@ export class AuthService {
         private jwtService: JwtService,
         private emailService: EmailService,
         private configService: ConfigService,
+        private prisma: PrismaService,
     ) { }
+
+    // บันทึก Audit Log
+    private async logAdminAction(userId: bigint, action: string, ipAddress?: string, userAgent?: string) {
+        try {
+            await this.prisma.adminLog.create({
+                data: { userId, action, ipAddress, userAgent },
+            });
+        } catch { /* ไม่ให้ error log กระทบ main flow */ }
+    }
 
     async register(registerDto: RegisterDto) {
         const { email, password, name } = registerDto;
@@ -43,27 +54,25 @@ export class AuthService {
         };
     }
 
-    async login(loginDto: LoginDto) {
+    async login(loginDto: LoginDto, ipAddress?: string, userAgent?: string) {
         const { email, password } = loginDto;
 
-        // Find user
         const user = await this.usersService.findByEmail(email);
         if (!user || !user.password_hash) {
             throw new UnauthorizedException('Invalid credentials');
         }
 
-        // Verify password
         const isPasswordValid = await bcrypt.compare(password, user.password_hash);
         if (!isPasswordValid) {
+            // บันทึก login ล้มเหลว
+            if (user.role === 'ADMIN') await this.logAdminAction(user.id, 'login_failed', ipAddress, userAgent);
             throw new UnauthorizedException('Invalid credentials');
         }
 
-        // Check if admin role - require OTP
         if (user.role === 'ADMIN') {
-            // Generate 6-digit OTP
             const otp = Math.floor(100000 + Math.random() * 900000).toString();
             const otpHash = await bcrypt.hash(otp, 10);
-            const expiresAt = new Date(Date.now() + 600000); // 10 minutes
+            const expiresAt = new Date(Date.now() + 600000);
 
             await this.usersService.createOtpRequest({
                 user_id: user.id,
@@ -72,6 +81,8 @@ export class AuthService {
             });
 
             await this.emailService.sendOtpEmail(user.email, otp);
+            // บันทึก OTP sent
+            await this.logAdminAction(user.id, 'otp_sent', ipAddress, userAgent);
 
             return {
                 requireOtp: true,
@@ -80,45 +91,32 @@ export class AuthService {
             };
         }
 
-        // Regular user - return token directly
         const token = this.generateToken(user.uuid, user.email);
-
-        return {
-            requireOtp: false,
-            user: this.sanitizeUser(user),
-            token,
-        };
+        return { requireOtp: false, user: this.sanitizeUser(user), token };
     }
 
-    async verifyAdminOtp(userId: string, otp: string) {
+    async verifyAdminOtp(userId: string, otp: string, ipAddress?: string, userAgent?: string) {
         const user = await this.usersService.findById(userId);
-        if (!user) {
-            throw new UnauthorizedException('Invalid user');
-        }
+        if (!user) throw new UnauthorizedException('Invalid user');
 
         const otpRecord = await this.usersService.findValidOtpRequest(user.id);
-        if (!otpRecord) {
-            throw new BadRequestException('No valid OTP found. Please login again');
-        }
+        if (!otpRecord) throw new BadRequestException('No valid OTP found. Please login again');
 
-        if (otpRecord.attempt_count >= 5) {
-            throw new BadRequestException('Too many failed attempts. Please login again');
-        }
+        if (otpRecord.attempt_count >= 5) throw new BadRequestException('Too many failed attempts. Please login again');
 
         const isOtpValid = await bcrypt.compare(otp, otpRecord.otp_hash);
         if (!isOtpValid) {
             await this.usersService.incrementOtpAttempts(otpRecord.id);
+            await this.logAdminAction(user.id, 'otp_failed', ipAddress, userAgent);
             throw new BadRequestException('Invalid OTP');
         }
 
         await this.usersService.deleteOtpRequest(otpRecord.id);
+        // บันทึก login สำเร็จ
+        await this.logAdminAction(user.id, 'login_success', ipAddress, userAgent);
 
         const token = this.generateToken(user.uuid, user.email);
-
-        return {
-            user: this.sanitizeUser(user),
-            token,
-        };
+        return { user: this.sanitizeUser(user), token };
     }
 
     async forgotPassword(forgotPasswordDto: ForgotPasswordDto) {

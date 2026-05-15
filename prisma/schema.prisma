@@ -34,9 +34,8 @@ model User {
   updated_at        DateTime  @updatedAt @db.Timestamp(0)
   last_login_at     DateTime? @db.Timestamp(0)
   
-  // OAuth fields
   name              String?   @db.VarChar(255)
-  provider          String    @default("local") @db.VarChar(20) // local, google, facebook
+  provider          String    @default("local") @db.VarChar(20)
   providerId        String?   @db.VarChar(255)
   
   orders            Order[]
@@ -44,13 +43,29 @@ model User {
   passwordResets    PasswordReset[]
   otpRequests       OtpRequest[]
   couponUsages      CouponUsage[]
-  
   topupTransactions TopupTransaction[]
+  adminLogs         AdminLog[]
 
   @@index([email])
   @@index([uuid])
   @@index([provider, providerId])
   @@map("users")
+}
+
+model AdminLog {
+  id          BigInt   @id @default(autoincrement())
+  userId      BigInt
+  action      String   @db.VarChar(100)
+  ipAddress   String?  @db.VarChar(45)
+  userAgent   String?  @db.Text
+  createdAt   DateTime @default(now()) @db.Timestamp(0)
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("admin_logs")
 }
 
 model PasswordReset {
@@ -89,25 +104,20 @@ model OtpRequest {
 
 model Order {
   id                    BigInt   @id @default(autoincrement())
-  userId                BigInt?  // Nullable to support guest orders
-  gameId                BigInt?  // Nullable for external games
+  userId                BigInt?  // Nullable to support guest orders ← เอาของทีม
+  gameId                BigInt?
   gameName              String   @db.VarChar(255)
-  packageId             BigInt?  // Nullable for external games
+  packageId             BigInt?
   packageName           String   @db.VarChar(255)
   packagePrice          Decimal  @db.Decimal(10, 2)
-  uid                   String   @db.VarChar(255) // Game UID
-  email                 String   @db.VarChar(255) // Player email for payment
-  
-  // For external API games (from 24payseller)
-  externalGameSlug      String?  @db.VarChar(100) // Game slug from external API
-  externalPackageSku    String?  @db.VarChar(100) // Package SKU from external API
-  
-  // Payment related fields
+  uid                   String   @db.VarChar(255)
+  email                 String   @db.VarChar(255)
+  externalGameSlug      String?  @db.VarChar(100)
+  externalPackageSku    String?  @db.VarChar(100)
   couponCode            String?  @db.VarChar(100)
   discountAmount        Decimal  @default(0) @db.Decimal(10, 2)
   finalPrice            Decimal? @db.Decimal(10, 2)
-  
-  status                String   @default("pending") @db.VarChar(20) // pending, processing, completed, failed
+  status                String   @default("pending") @db.VarChar(20)
   paymentMethod         String?  @db.VarChar(50)
   createdAt             DateTime @default(now()) @db.Timestamp(0)
   updatedAt             DateTime @updatedAt @db.Timestamp(0)
@@ -115,7 +125,7 @@ model Order {
   user                  User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   game                  Game?    @relation(fields: [gameId], references: [id], onDelete: SetNull)
   package               GamePackage? @relation(fields: [packageId], references: [id], onDelete: SetNull)
-  transactions          TopupTransaction[] // Link to payment transactions
+  transactions          TopupTransaction[]
   
   @@index([userId])
   @@index([gameId])
@@ -130,10 +140,10 @@ model Order {
 model Transaction {
   id            BigInt   @id @default(autoincrement())
   userId        BigInt
-  type          String   @db.VarChar(50) // topup, purchase, refund
+  type          String   @db.VarChar(50)
   amount        Decimal  @db.Decimal(10, 2)
   description   String?  @db.Text
-  status        String   @default("completed") @db.VarChar(20) // pending, completed, failed
+  status        String   @default("completed") @db.VarChar(20)
   createdAt     DateTime @default(now()) @db.Timestamp(0)
   
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -145,16 +155,16 @@ model Transaction {
 }
 
 model Game {
-  id          BigInt   @id @default(autoincrement())
-  name        String   @db.VarChar(255)
-  slug        String   @unique @db.VarChar(255)
-  description String?  @db.Text
-  image       String?  @db.VarChar(500)
+  id          BigInt    @id @default(autoincrement())
+  name        String    @db.VarChar(255)
+  slug        String    @unique @db.VarChar(255)
+  description String?   @db.Text
+  image       String?   @db.VarChar(500)
   categoryId  BigInt?
   label       GameLabel @default(NONE)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now()) @db.Timestamp(0)
-  updatedAt   DateTime @updatedAt @db.Timestamp(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @db.Timestamp(0)
+  updatedAt   DateTime  @updatedAt @db.Timestamp(0)
 
   category    GameCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   packages    GamePackage[]
@@ -185,43 +195,50 @@ model GameCategory {
 }
 
 model GamePackage {
-  id            BigInt   @id @default(autoincrement())
-  gameId        BigInt
-  sku           String   @unique @db.VarChar(100) // Package SKU from external API
-  name          String   @db.VarChar(255)
-  description   String?  @db.Text
-  price         Decimal  @db.Decimal(10, 2)
-  originalPrice Decimal  @default(0) @db.Decimal(10, 2) // Original price before discount
-  discount      Int      @default(0)
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now()) @db.Timestamp(0)
-  updatedAt     DateTime @updatedAt @db.Timestamp(0)
+  id              BigInt    @id @default(autoincrement())
+  gameId          BigInt
+  sku             String    @unique @db.VarChar(100)
+  name            String    @db.VarChar(255)
+  description     String?   @db.Text
+  price           Decimal   @db.Decimal(10, 2)
+  originalPrice   Decimal   @default(0) @db.Decimal(10, 2)
+  cost            Decimal   @default(0) @db.Decimal(10, 2)
+  discount        Int       @default(0)
+  flashSalePrice  Decimal?  @db.Decimal(10, 2)
+  flashSaleStart  DateTime? @db.Timestamp(0)
+  flashSaleEnd    DateTime? @db.Timestamp(0)
+  quota           Int?
+  soldCount       Int       @default(0)
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now()) @db.Timestamp(0)
+  updatedAt       DateTime  @updatedAt @db.Timestamp(0)
   
-  game          Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  orders        Order[]
+  game            Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  orders          Order[]
   
   @@index([gameId])
   @@index([isActive])
   @@index([sku])
+  @@index([flashSaleEnd])
   @@map("game_packages")
 }
 
 model GameInputField {
   id            BigInt   @id @default(autoincrement())
   gameId        BigInt
-  key           String   @db.VarChar(100) // UID, ZONE_ID, SERVER, PASSWORD, etc.
-  label         String   @db.VarChar(255) // User ID, Zone ID, Server, Password, etc.
+  key           String   @db.VarChar(100)
+  label         String   @db.VarChar(255)
   placeholder   String?  @db.VarChar(255)
-  type          String   @default("text") @db.VarChar(50) // text, email, number, password, select
+  type          String   @default("text") @db.VarChar(50)
   required      Boolean  @default(true)
-  regex         String?  @db.VarChar(500) // Validation regex pattern
+  regex         String?  @db.VarChar(500)
   helpText      String?  @db.Text
-  order         Int      @default(0) // Display order
+  order         Int      @default(0)
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now()) @db.Timestamp(0)
   updatedAt     DateTime @updatedAt @db.Timestamp(0)
 
-  game          Game                      @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  game          Game                   @relation(fields: [gameId], references: [id], onDelete: Cascade)
   options       GameInputFieldOption[]
 
   @@index([gameId])
@@ -233,9 +250,9 @@ model GameInputField {
 model GameInputFieldOption {
   id            BigInt   @id @default(autoincrement())
   fieldId       BigInt
-  label         String   @db.VarChar(255) // Display text
-  value         String   @db.VarChar(500) // Actual value to save
-  order         Int      @default(0) // Display order
+  label         String   @db.VarChar(255)
+  value         String   @db.VarChar(500)
+  order         Int      @default(0)
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now()) @db.Timestamp(0)
 
@@ -266,8 +283,8 @@ model Banner {
 }
 
 enum CouponDiscountType {
-  FIXED       // Fixed discount amount
-  PERCENTAGE  // Percentage discount
+  FIXED
+  PERCENTAGE
 }
 
 enum CouponStatus {
@@ -277,28 +294,25 @@ enum CouponStatus {
 }
 
 model Coupon {
-  id                  BigInt   @id @default(autoincrement())
-  uuid                String   @unique @default(uuid()) @db.Char(36)
-  code                String   @unique @db.VarChar(50)
-  description         String?  @db.Text
-  discountType        CouponDiscountType @default(FIXED)
-  discountValue       Decimal  @db.Decimal(10, 2)  // Amount or percentage based on discountType
-  minimumAmount       Decimal  @default(0) @db.Decimal(10, 2)
-  maximumUses         Int      @default(0)  // 0 = unlimited
-  currentUsageCount   Int      @default(0)
-  usagePerUser        Int      @default(1)  // Number of times a user can use this coupon
-  startDate           DateTime @db.Timestamp(0)
-  expiryDate          DateTime @db.Timestamp(0)
+  id                   BigInt             @id @default(autoincrement())
+  uuid                 String             @unique @default(uuid()) @db.Char(36)
+  code                 String             @unique @db.VarChar(50)
+  description          String?            @db.Text
+  discountType         CouponDiscountType @default(FIXED)
+  discountValue        Decimal            @db.Decimal(10, 2)
+  minimumAmount        Decimal            @default(0) @db.Decimal(10, 2)
+  maximumUses          Int                @default(0)
+  currentUsageCount    Int                @default(0)
+  usagePerUser         Int                @default(1)
+  startDate            DateTime           @db.Timestamp(0)
+  expiryDate           DateTime           @db.Timestamp(0)
+  applicableGameIds    BigInt[]
+  applicablePackageIds BigInt[]
+  isActive             Boolean            @default(true)
+  createdAt            DateTime           @default(now()) @db.Timestamp(0)
+  updatedAt            DateTime           @updatedAt @db.Timestamp(0)
   
-  // Available for specific games/packages
-  applicableGameIds   BigInt[]  // JSON array of game IDs (null/empty = all games)
-  applicablePackageIds BigInt[] // JSON array of package IDs (null/empty = all packages)
-  
-  isActive            Boolean  @default(true)
-  createdAt           DateTime @default(now()) @db.Timestamp(0)
-  updatedAt           DateTime @updatedAt @db.Timestamp(0)
-  
-  usages              CouponUsage[]
+  usages               CouponUsage[]
   
   @@index([code])
   @@index([isActive])
@@ -330,7 +344,7 @@ model CouponUsage {
 
 model PaymentMethod {
   id          BigInt   @id @default(autoincrement())
-  code        String   @unique @db.VarChar(50)  // promptpay, truemoney
+  code        String   @unique @db.VarChar(50)
   name        String   @db.VarChar(100)
   description String?  @db.VarChar(255)
   icon        String?  @db.VarChar(50)
@@ -347,12 +361,12 @@ model PaymentMethod {
 
 model TopupTransaction {
   id            BigInt    @id @default(autoincrement())
-  referenceId   String    @unique @db.VarChar(50)  // TP-YYYYMMDD-XXXXX
+  referenceId   String    @unique @db.VarChar(50)
   userId        BigInt
-  orderId       BigInt?   // Link to Order for payment tracking
+  orderId       BigInt?
   methodId      BigInt
   amount        Decimal   @db.Decimal(10, 2)
-  status        String    @default("pending") @db.VarChar(20) // pending, completed, failed, expired
+  status        String    @default("pending") @db.VarChar(20)
   paymentUrl    String?   @db.VarChar(500)
   expiresAt     DateTime? @db.Timestamp(0) @map("expires_at")
   completedAt   DateTime? @db.Timestamp(0)

@@ -1,7 +1,7 @@
 {
-    "name": "gachapay-backend-api",
+    "name": "gachapay-member-api",
     "version": "1.0.0",
-    "description": "Gachapay Backend API with NestJS",
+    "description": "GachaPay Member API with NestJS",
     "author": "",
     "private": true,
     "license": "MIT",

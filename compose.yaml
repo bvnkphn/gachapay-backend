@@ -1,7 +1,7 @@
 services:
-  gachapay-backend-api:
-    image: gachapay-backend-api
-    container_name: gachapay-backend-api
+  gachapay-member-api:
+    image: gachapay-member-api
+    container_name: gachapay-member-api
     build:
       context: .
       dockerfile: ./Dockerfile

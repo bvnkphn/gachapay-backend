@@ -1,7 +1,7 @@
 {
-    "name": "game-topup-backend",
+    "name": "gachapay-backend-api",
     "version": "1.0.0",
-    "description": "Game Top-up Backend API with NestJS",
+    "description": "Gachapay Backend API with NestJS",
     "author": "",
     "private": true,
     "license": "MIT",

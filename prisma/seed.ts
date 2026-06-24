@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+require('dotenv').config();
 
 const prisma = new PrismaClient();
 
@@ -15,8 +16,11 @@ function randomBetween(min: number, max: number) {
 
 async function main() {
     console.log('🌱 Starting seed...');
-    const passwordAdmin = await bcrypt.hash('Pun12345', 10);
-    const passwordUser  = await bcrypt.hash('Test1234!', 10);
+    const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD || 'Pass1234';
+    const userPassword = process.env.USER_DEFAULT_PASSWORD || 'Test1234!';
+    const passwordAdmin = await bcrypt.hash(adminPassword, 10);
+    const passwordUser  = await bcrypt.hash(userPassword, 10);
+    console.log('🔑 Using passwords from .env (or defaults if not set)');
 
     await prisma.paymentMethod.upsert({ where: { code: 'promptpay' }, update: {}, create: { code: 'promptpay', name: 'PromptPay (พร้อมเพย์)', icon: 'PP', color: '#1a56db', isActive: true } });
     await prisma.paymentMethod.upsert({ where: { code: 'truemoney' }, update: {}, create: { code: 'truemoney', name: 'TrueMoney Wallet',       icon: 'TW', color: '#f97316', isActive: true } });
@@ -76,9 +80,9 @@ async function main() {
     console.log('✅ Games & packages ready');
 
     await prisma.user.upsert({
-        where: { email: 'kittanat.pun@gmail.com' },
+        where: { email: process.env.EMAIL_USER },
         update: { password_hash: passwordAdmin, role: 'ADMIN' },
-        create: { email: 'kittanat.pun@gmail.com', name: 'Super Admin', password_hash: passwordAdmin, tier: 'PLATINUM', point_balance: 0, wallet_balance: 0, role: 'ADMIN', isEmailVerified: true, provider: 'local' },
+        create: { email: process.env.EMAIL_USER, name: 'Super Admin', password_hash: passwordAdmin, tier: 'PLATINUM', point_balance: 0, wallet_balance: 0, role: 'ADMIN', isEmailVerified: true, provider: 'local' },
     });
 
     const users = await Promise.all([
@@ -160,7 +164,7 @@ async function main() {
         orderCount++;
     }
     console.log(`✅ Orders: ${orderCount} รายการ`);
-    console.log('\n🔑 Admin: kittanat.pun@gmail.com / Pun12345');
+    console.log('\n🔑 Admin: ' + process.env.EMAIL_USER + ' / ' + process.env.EMAIL_PASSWORD);
 }
 
 main()

@@ -27,6 +27,8 @@ export class PaymentService {
             data: { status: 'completed', paymentMethod: 'gacha_wallet', updatedAt: new Date() },
         });
 
+        await this.prisma.processReferralReward(userId);
+
         // NOTE: do not create a topup transaction for internal wallet payments.
         // Wallet payments decrement the user's balance and mark the order completed,
         // but they should not be treated as a top-up that increases cumulative topup totals.
@@ -112,6 +114,9 @@ export class PaymentService {
                             where: { id: orderId },
                             data: { status: 'completed', paymentMethod: parts[0].toLowerCase(), updatedAt: new Date() },
                         });
+                        if (order.userId) {
+                            await this.prisma.processReferralReward(order.userId);
+                        }
                     }
                 } catch (err) {}
             }

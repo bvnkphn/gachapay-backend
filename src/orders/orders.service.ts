@@ -178,6 +178,10 @@ export class OrdersService {
             data:  { status: newStatus, updatedAt: new Date() },
         });
 
+        if (newStatus === 'completed' && order.userId) {
+            await this.prisma.processReferralReward(order.userId);
+        }
+
         // Audit log
         await this.prisma.adminLog.create({
             data: {

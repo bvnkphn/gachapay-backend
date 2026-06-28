@@ -101,12 +101,16 @@ export class TopupService {
 
     // DEV: simulate payment complete → update balance + points + tier
     async simulateComplete(referenceId: string, userId: bigint) {
-        const tx = await this.prisma.topupTransaction.findUnique({ where: { referenceId } });
+        const tx = await this.prisma.topupTransaction.findUnique({
+            where: { referenceId },
+            include: { method: true },
+        });
         if (!tx || tx.userId !== userId) throw new NotFoundException('Transaction not found');
         if (tx.status !== 'pending') throw new ConflictException(`Transaction is already '${tx.status}'`);
 
-        const amount = Number(tx.amount);
-        const pointsEarned = Math.floor(amount); // 1 บาท = 1 point
+        const isTrueMoney = tx.method?.code === 'truemoney';
+        const netAmount = isTrueMoney ? Math.round((Number(tx.amount) / 1.015) * 100) / 100 : Number(tx.amount);
+        const pointsEarned = Math.floor(netAmount); // 1 บาท = 1 point
 
         // ดึง point ปัจจุบันก่อน
         const user = await this.prisma.user.findUnique({
@@ -147,7 +151,7 @@ export class TopupService {
             };
 
             if (!tx.orderId) {
-                userUpdateData.wallet_balance = { increment: tx.amount };
+                userUpdateData.wallet_balance = { increment: netAmount };
             }
 
             await txPrisma.user.update({

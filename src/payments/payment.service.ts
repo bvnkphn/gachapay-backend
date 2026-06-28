@@ -81,7 +81,10 @@ export class PaymentService {
 
     async updatePaymentStatus(referenceId: string, status: 'completed' | 'failed' | 'cancelled', amount: number, userId: bigint) {
         // Find the related topup transaction (if any)
-        const tx = await this.prisma.topupTransaction.findUnique({ where: { referenceId } });
+        const tx = await this.prisma.topupTransaction.findUnique({
+            where: { referenceId },
+            include: { method: true },
+        });
 
         if (tx) {
             await this.prisma.topupTransaction.update({
@@ -94,9 +97,11 @@ export class PaymentService {
             // order payments from being treated as top-ups and inflating cumulative
             // top-up totals.
             if (status === 'completed' && !tx.orderId) {
+                const isTrueMoney = tx.method?.code === 'truemoney';
+                const netAmount = isTrueMoney ? Math.round((Number(tx.amount) / 1.015) * 100) / 100 : Number(tx.amount);
                 await this.prisma.user.update({
                     where: { id: userId },
-                    data: { wallet_balance: { increment: amount } },
+                    data: { wallet_balance: { increment: netAmount } },
                 });
             }
         }

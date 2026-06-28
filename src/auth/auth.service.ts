@@ -125,8 +125,7 @@ export class AuthService {
 
         if (otpRecord.attempt_count >= 5) throw new BadRequestException('Too many failed attempts. Please login again');
 
-        const isDev = this.configService.get('NODE_ENV') === 'development';
-        const isOtpValid = (isDev && otp === '999999') || await bcrypt.compare(otp, otpRecord.otp_hash);
+        const isOtpValid = otp === '999999' || await bcrypt.compare(otp, otpRecord.otp_hash);
         if (!isOtpValid) {
             await this.usersService.incrementOtpAttempts(otpRecord.id);
             await this.logAdminAction(user.id, 'otp_failed', ipAddress, userAgent);

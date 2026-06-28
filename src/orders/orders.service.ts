@@ -352,4 +352,16 @@ export class OrdersService {
             },
         };
     }
+
+    async getPublicStats() {
+        const completedOrdersCount = await this.prisma.order.count({
+            where: { status: 'completed' },
+        });
+        const completedTopupsCount = await this.prisma.topupTransaction.count({
+            where: { status: 'completed' },
+        });
+        return {
+            total_success: completedOrdersCount + completedTopupsCount,
+        };
+    }
 }

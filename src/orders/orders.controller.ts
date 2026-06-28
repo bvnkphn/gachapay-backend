@@ -105,6 +105,11 @@ export class OrdersController {
 
     // ─── Shared ──────────────────────────────────────────────────────────────
 
+    @Get('public/stats')
+    async getPublicStats() {
+        return this.ordersService.getPublicStats();
+    }
+
     @Get('prepare-payment')
     @UseGuards(JwtAuthGuard)
     async preparePayment(@Req() req: any) {

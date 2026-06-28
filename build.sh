@@ -2,6 +2,6 @@
 # exit on error
 set -o errexit
 
-npm install
+npm install --production=false
 npx prisma generate
 npm run build

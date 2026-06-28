@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
@@ -255,7 +255,7 @@ export class UsersService {
             where: { userId: user.id, status: 'completed' },
         });
         const completedTopupsCount = await this.prisma.topupTransaction.count({
-            where: { userId: user.id, status: 'completed' },
+            where: { userId: user.id },
         });
         const hasPurchased = (completedOrdersCount + completedTopupsCount) > 0;
 
@@ -302,10 +302,10 @@ export class UsersService {
             where: { userId: user.id, status: 'completed' },
         });
         const completedTopupsCount = await this.prisma.topupTransaction.count({
-            where: { userId: user.id, status: 'completed' },
+            where: { userId: user.id },
         });
         if ((completedOrdersCount + completedTopupsCount) > 0) {
-            throw new BadRequestException('ไม่สามารถระบุผู้แนะนำได้หลังจากทำรายการสำเร็จแล้ว');
+            throw new BadRequestException('ไม่สามารถระบุผู้แนะนำได้หลังจากมีประวัติการทำรายการแล้ว');
         }
 
         const referrerIdStr = referrerCode.replace(/.*\/ref\//, "").trim();

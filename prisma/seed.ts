@@ -17,7 +17,7 @@ function randomBetween(min: number, max: number) {
 async function main() {
     console.log('🌱 Starting seed...');
     const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD || 'Pass1234';
-    const userPassword = process.env.USER_DEFAULT_PASSWORD || 'Test1234!';
+    const userPassword = 'User123321za.';
     const adminTestPassword = 'Admin123321za.';
     const passwordAdmin = await bcrypt.hash(adminPassword, 10);
     const passwordUser  = await bcrypt.hash(userPassword, 10);

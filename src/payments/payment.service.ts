@@ -45,9 +45,17 @@ export class PaymentService {
         const referenceNumber = `${method.toUpperCase()}_${orderId}_${Date.now()}`;
         const mockQRCode = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${referenceNumber}`;
 
+        // Fetch order to get the actual userId if available
+        const order = await this.prisma.order.findUnique({
+            where: { id: BigInt(orderId) },
+            select: { userId: true },
+        });
+        const userId = order?.userId || BigInt(1);
+
         await this.prisma.topupTransaction.create({
             data: {
-                userId: BigInt(1),
+                userId,
+                orderId: BigInt(orderId),
                 methodId: method === 'promptpay' ? BigInt(2) : BigInt(3),
                 amount,
                 status: 'pending',
@@ -84,6 +92,22 @@ export class PaymentService {
                 where: { id: userId },
                 data: { wallet_balance: { increment: amount } },
             });
+
+            // Check if referenceId follows the pattern METHOD_ORDERID_TIMESTAMP to auto-complete the order
+            const parts = referenceId.split('_');
+            if (parts.length >= 3) {
+                const orderIdStr = parts[1];
+                try {
+                    const orderId = BigInt(orderIdStr);
+                    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+                    if (order) {
+                        await this.prisma.order.update({
+                            where: { id: orderId },
+                            data: { status: 'completed', paymentMethod: parts[0].toLowerCase(), updatedAt: new Date() },
+                        });
+                    }
+                } catch (err) {}
+            }
         }
 
         return { success: true, message: `Payment ${status}`, data: { referenceId, status } };

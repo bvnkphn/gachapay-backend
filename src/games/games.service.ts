@@ -107,12 +107,26 @@ export class GamesService {
             const game = await this.externalGameService.fetchGameBySlug(slug);
             if (!game) return null;
             return {
-                id: game.key, name: game.name, slug: game.key, image: null,
-                packages: (game.items || []).map((item: any) => ({ id: item.sku, name: item.name, price: parseFloat(item.price) || 0 })),
+                id: game.key,
+                name: game.name,
+                slug: game.key,
+                image: this.getGameImageUrl(game.key),
+                packages: (game.items || []).map((item: any) => ({
+                    id: item.sku,
+                    name: item.name,
+                    price: parseFloat(item.price) || 0,
+                })),
                 fields: (game.inputs || []).map((input: any) => ({
-                    name: input.key, label: input.title || input.key, placeholder: input.placeholder || '',
-                    type: input.type || 'text', required: true, regex: input.regex ?? null,
-                    options: (input.options || []).map((opt: any) => ({ label: opt.label, value: opt.value })),
+                    name: input.key,
+                    label: input.title || input.key,
+                    placeholder: input.placeholder || '',
+                    type: input.type || 'text',
+                    required: true,
+                    regex: input.regex ?? null,
+                    options: (input.options || []).map((opt: any) => ({
+                        label: opt.label,
+                        value: opt.value,
+                    })),
                 })),
             };
         } catch { return null; }
@@ -121,6 +135,7 @@ export class GamesService {
     private transformDbGame(game: any) {
         return {
             ...game,
+            image: game.image || this.getGameImageUrl(game.slug),
             fields: game.inputFields.map((field: any) => ({
                 name: field.key, label: field.label, placeholder: field.placeholder || '',
                 type: field.type, required: field.required, regex: field.regex, helpText: field.helpText,
@@ -144,19 +159,115 @@ export class GamesService {
         } catch (error) { console.error('Error fetching games:', error); throw error; }
     }
 
+    // ── Verified game image map (HTTP 200 confirmed) ───────────────────
+    // External API (24payseller) does NOT include an image field.
+    // Only games with verified Codashop CDN images are listed here.
+    // Games NOT in this map will be hidden from the browse list but
+    // remain accessible via direct slug URL for purchase.
+    private static readonly GAME_IMAGES: Record<string, string> = {
+        // ── Free Fire (all regions share the same tile) ──
+        'free-fire':            'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/Garena_Free_Fire_178x178.jpg',
+        'free-fire-i':          'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/Garena_Free_Fire_178x178.jpg',
+        'free-fire-my':         'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/Garena_Free_Fire_178x178.jpg',
+        'free-fire-sg':         'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/Garena_Free_Fire_178x178.jpg',
+        'garena-free-fire-vip': 'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/Garena_Free_Fire_178x178.jpg',
+        'gift-free-fire':       'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/Garena_Free_Fire_178x178.jpg',
+
+        // ── Valorant (all regions) ──
+        'valorant-thailand':    'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/valorant_tile.jpg',
+        'valorant-indonesia':   'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/valorant_tile.jpg',
+        'valorant-malaysia':    'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/valorant_tile.jpg',
+        'valorant-philipines':  'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/valorant_tile.jpg',
+        'valorant-singapore':   'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/valorant_tile.jpg',
+
+        // ── Action / Shooter ──
+        'blood-strike':         'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/blood_strike_tile.png',
+        'blood-strike-flashsale': 'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/blood_strike_tile.png',
+        'pubg-mobile-global':   'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/pubgm_tile_aug2024.jpg',
+        'ballistic-hero':       'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/BallisticHeroVNG_TH_icon.png',
+        'one-punch-man-strongest': 'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/opm_new2_tile.png',
+
+        // ── MOBA / Strategy ──
+        'mobile-legends-global':        'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/MLBB-2025-tiles-178x178.jpg',
+        'mobile-legends-global-v2':     'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/MLBB-2025-tiles-178x178.jpg',
+        'mobile-legends-global-v3':     'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/MLBB-2025-tiles-178x178.jpg',
+        'mobile-legends-indonesia':     'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/MLBB-2025-tiles-178x178.jpg',
+        'mobile-legends-malaysia':      'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/MLBB-2025-tiles-178x178.jpg',
+        'mobile-legends-russia':        'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/MLBB-2025-tiles-178x178.jpg',
+        'mobile-legends-singapore':     'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/MLBB-2025-tiles-178x178.jpg',
+        'mobile-legends-turkey':        'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/MLBB-2025-tiles-178x178.jpg',
+        'mobile-legends-united-states': 'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/MLBB-2025-tiles-178x178.jpg',
+        'mlbb-php-flashsale':           'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/MLBB-2025-tiles-178x178.jpg',
+        'rov-mobile':           'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/Garena_RoV_Arena_of_Valor_178x178.jpg',
+
+        // ── RPG / Open World / MMO ──
+        'genshin-impact':       'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/genshinimpact_tile.jpg',
+        'genshin-impact-th':    'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/genshinimpact_tile.jpg',
+        'honkai-star-rail':     'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/hsr_tile.jpg',
+        'ragnarok-crush-s':     'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/ragnarok_tile.jpg',
+        'rom-classic':          'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/ragnarok_tile.jpg',
+        'echocalypse':          'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/echocalypse_tile.jpg',
+        'revelation-mobile-infinite-journey': 'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/vng_revalation_tile.png',
+        'kings-choice':         'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/kings_choice_tile.jpg',
+
+        // ── Sports / Racing ──
+        'fc-mobile-thailand':   'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/EA_FC_Oct_2025.png',
+        'ace-racer':            'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/tdr-new-tile.jpg',
+
+        // ── Social / Casual ──
+        'bigo-live':            'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/bigo_live_tile.jpg',
+        'roblox-login':         'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/NEWmcgg.PNG',
+        'zepeto':               'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/zepeto_tile.png',
+        'identityv-global':     'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/Identity_V_tile.jpg',
+
+        // ── Other ──
+        'steam':                'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/steam_tile.jpg',
+        'discord':              'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/Discord_Tile_178x178.jpg',
+    };
+
+    /**
+     * Get image URL for a game by its key.
+     * Returns null if no verified CDN image exists.
+     */
+    private getGameImageUrl(gameKey: string): string | null {
+        // 1. Exact match
+        if (GamesService.GAME_IMAGES[gameKey]) {
+            return GamesService.GAME_IMAGES[gameKey];
+        }
+        // 2. Partial match — find the first key that's a substring of the gameKey
+        const partialMatch = Object.keys(GamesService.GAME_IMAGES).find(k => gameKey.includes(k) || k.includes(gameKey));
+        if (partialMatch) {
+            return GamesService.GAME_IMAGES[partialMatch];
+        }
+        return null;
+    }
+
     private async transformGameData(games: any[]) {
         const transformedGames = await Promise.all(games.map(async (game: any) => ({
-            id: game.id || game.key || Math.random(), name: game.name, slug: game.key,
-            image: game.image || null, category: await this.getGameCategory(game.key),
-            label: this.determineLabel(game.label || 'NONE'), description: game.description || null,
+            id: game.id || game.key || Math.random(),
+            name: game.name,
+            slug: game.key,
+            image: game.image || this.getGameImageUrl(game.key),
+            category: await this.getGameCategory(game.key),
+            label: this.determineLabel(game.label || 'NONE'),
+            description: game.description || null,
             packages: (game.items || []).map((item: any) => ({
-                id: item.sku || item.id || item.key, name: item.name, description: item.description || null, count: item.name,
+                id: item.sku || item.id || item.key,
+                name: item.name,
+                description: item.description || null,
+                count: item.name,
                 price: typeof item.price === 'string' ? parseFloat(item.price) : (item.price || 0),
             })),
             fields: (game.inputs || []).map((input: any) => ({
-                name: input.key || input.name, label: input.title || input.label || input.key,
-                placeholder: input.placeholder || '', type: input.type || 'text', required: input.required !== false,
-                options: (input.options || []).map((opt: any) => ({ label: opt.label || opt.name, value: opt.value || opt.key })),
+                name: input.key || input.name,
+                label: input.title || input.label || input.key,
+                placeholder: input.placeholder || '',
+                type: input.type || 'text',
+                required: input.required !== false,
+                options: (input.options || []).map((opt: any) => ({
+                    label: opt.label || opt.name,
+                    value: opt.value || opt.key,
+                })),
             })),
         })));
         return { data: transformedGames.filter(g => g.name) };
@@ -164,20 +275,65 @@ export class GamesService {
 
     private async getGameCategory(gameKey: string): Promise<string> {
         const k = gameKey.toLowerCase();
-        if (['call-of-duty','blood-strike','crossfire','delta-force','free-fire','pubg','snowbreak','valorant','ballistic','arena-breakout','bleach','one-punch-man','metal-slug'].some(v => k.includes(v))) return 'Action / Shooter';
-        if (['mobile-legends','rov','honor-of-kings','magic-chess','onmyoji-arena','draconia','haikyu'].some(v => k.includes(v))) return 'MOBA / Strategy';
-        if (['impact','honkai','wuthering','zenless','genshin','afk-journey','ragnarok','lineage','jujutsu','echocalypse','mecha-break'].some(v => k.includes(v))) return 'RPG / Open World / MMO';
-        if (['racer','racing','race','fc-mobile','top-eleven','football','dunk'].some(v => k.includes(v))) return 'Sports / Racing';
-        if (['bigo','roblox','zepeto','super-sus','marvel-snap','identity','hearttopia'].some(v => k.includes(v))) return 'Social / Casual / Simulation';
+        
+        // Action / Shooter / Battle Royale / FPS
+        if ([
+            'call-of-duty', 'blood-strike', 'crossfire', 'delta-force', 'free-fire', 'pubg', 
+            'snowbreak', 'valorant', 'ballistic', 'arenabreakout', 'arena-breakout', 'bleach', 
+            'one-punch-man', 'metal-slug', 'sausage-man', 'crossfire-legends', 'bleach-soul-resonance', 
+            'lord-of-nazarick', 'lordnine'
+        ].some(v => k.includes(v))) {
+            return 'Action / Shooter';
+        }
+        
+        // MOBA / Strategy
+        if ([
+            'mobile-legends', 'rov', 'honor-of-kings', 'magic-chess', 'magicchess', 'onmyoji-arena', 
+            'draconia', 'haikyu', 'dunk-city-dynasty'
+        ].some(v => k.includes(v))) {
+            return 'MOBA / Strategy';
+        }
+        
+        // RPG / Open World / MMO
+        if ([
+            'impact', 'honkai', 'wuthering', 'zenless', 'genshin', 'afk-journey', 'ragnarok', 
+            'lineage', 'jujutsu', 'echocalypse', 'mecha-break', 'aether-gazer', 'crystal-of-atlan', 
+            'dragon-nest', 'dragon-raja', 'dragonica', 'dream-and-lethe', 'forsaken-world', 
+            'ghost-story', 'kings-choice', 'magic-awakened', 'mu-new-dawn', 'revelation-mobile', 
+            'rememento', 'silver-and-blood', 'where-winds-meet'
+        ].some(v => k.includes(v))) {
+            return 'RPG / Open World / MMO';
+        }
+        
+        // Sports / Racing
+        if ([
+            'racer', 'racing', 'race', 'fc-mobile', 'top-eleven', 'football', 'dunk', 'speed-drifters'
+        ].some(v => k.includes(v))) {
+            return 'Sports / Racing';
+        }
+        
+        // Social / Casual / Simulation
+        if ([
+            'bigo', 'roblox', 'zepeto', 'super-sus', 'marvel-snap', 'identity', 'hearttopia', 
+            'eggy-party', 'poppo', 'yalla'
+        ].some(v => k.includes(v))) {
+            return 'Social / Casual / Simulation';
+        }
+        
         return 'Other';
     }
 
-    async getAllCategories(): Promise<string[]> {
-        try {
-            const categories = await this.categoriesService.findAll();
-            return categories.map(c => c.name);
-        } catch { return ['All', 'Action', 'MOBA', 'Other', 'Racing', 'RPG', 'Shooter', 'Social']; }
+    async getAllCategories(): Promise<any[]> {
+        return [
+            { id: '1', name: 'Action / Shooter', slug: 'action-shooter', description: 'Action / Shooter' },
+            { id: '2', name: 'MOBA / Strategy', slug: 'moba-strategy', description: 'MOBA / Strategy' },
+            { id: '3', name: 'RPG / Open World / MMO', slug: 'rpg-open-world-mmo', description: 'RPG / Open World / MMO' },
+            { id: '4', name: 'Sports / Racing', slug: 'sports-racing', description: 'Sports / Racing' },
+            { id: '5', name: 'Social / Casual / Simulation', slug: 'social-casual-simulation', description: 'Social / Casual / Simulation' },
+            { id: '6', name: 'Other', slug: 'other', description: 'Other' },
+        ];
     }
+
 
     private determineLabel(tag: string): 'NONE' | 'HOT' | 'NEW' | 'SALE' {
         const t = tag?.toUpperCase() || 'NONE';

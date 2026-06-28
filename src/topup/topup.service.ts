@@ -116,20 +116,39 @@ export class TopupService {
         const newPoints = (user?.point_balance ?? 0) + pointsEarned;
         const newTier = this.calculateTier(newPoints);
 
-        const [updated] = await this.prisma.$transaction([
-            this.prisma.topupTransaction.update({
+        const updated = await this.prisma.$transaction(async (txPrisma) => {
+            // Check if referenceId follows the pattern METHOD_ORDERID_TIMESTAMP to auto-complete the order
+            const parts = referenceId.split('_');
+            if (parts.length >= 3) {
+                const orderIdStr = parts[1];
+                try {
+                    const orderId = BigInt(orderIdStr);
+                    const order = await txPrisma.order.findUnique({ where: { id: orderId } });
+                    if (order) {
+                        await txPrisma.order.update({
+                            where: { id: orderId },
+                            data: { status: 'completed', paymentMethod: parts[0].toLowerCase(), updatedAt: new Date() },
+                        });
+                    }
+                } catch (err) {}
+            }
+
+            const updatedTx = await txPrisma.topupTransaction.update({
                 where: { referenceId },
                 data: { status: 'completed', completedAt: new Date() },
-            }),
-            this.prisma.user.update({
+            });
+
+            await txPrisma.user.update({
                 where: { id: userId },
                 data: {
                     wallet_balance: { increment: tx.amount },
                     point_balance: newPoints,
                     tier: newTier,
                 },
-            }),
-        ]);
+            });
+
+            return updatedTx;
+        });
 
         return {
             reference_id: updated.referenceId,
@@ -156,10 +175,10 @@ export class TopupService {
     }
 
     private calculateTier(points: number): string {
-        if (points >= 50000) return 'PLATINUM';
-        if (points >= 10000) return 'GOLD';
-        if (points >= 1000) return 'SILVER';
-        return 'BRONZE';
+        if (points >= 1000000) return 'EMERALD';
+        if (points >= 500000) return 'PLATINUM';
+        if (points >= 100000) return 'BRONZE';
+        return 'MEMBER';
     }
 
     private generateReferenceId(): string {

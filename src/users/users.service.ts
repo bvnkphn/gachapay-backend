@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
@@ -124,20 +124,20 @@ export class UsersService {
         if (!user) return null;
 
         const tierThresholds: Record<string, number> = {
-            BRONZE: 1000,
-            SILVER: 5000,
-            GOLD: 10000,
-            PLATINUM: 50000,
+            MEMBER: 0,
+            BRONZE: 100000,
+            PLATINUM: 500000,
+            EMERALD: 1000000,
         };
 
-        const currentTier = (user.tier ?? 'BRONZE').toUpperCase();
+        const currentTier = (user.tier ?? 'MEMBER').toUpperCase();
         const tiers = Object.keys(tierThresholds);
         const currentIndex = tiers.indexOf(currentTier);
         const nextTier = tiers[currentIndex + 1];
         const next_tier_threshold = nextTier ? tierThresholds[nextTier] : null;
 
         return {
-            tier: user.tier ?? 'BRONZE',
+            tier: user.tier ?? 'MEMBER',
             current_points: user.point_balance,
             next_tier_threshold,
         };
@@ -152,6 +152,26 @@ export class UsersService {
         return {
             amount: user.wallet_balance,
             currency: 'THB',
+        };
+    }
+
+    async claimGachaReward(uuid: string, amount: number) {
+        const user = await this.prisma.user.findUnique({
+            where: { uuid },
+            select: { id: true }
+        });
+        if (!user) throw new NotFoundException('User not found');
+
+        const updated = await this.prisma.user.update({
+            where: { id: user.id },
+            data: {
+                wallet_balance: { increment: amount }
+            }
+        });
+
+        return {
+            success: true,
+            new_balance: updated.wallet_balance
         };
     }
 }

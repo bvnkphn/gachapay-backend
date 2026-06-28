@@ -16,6 +16,33 @@ function randomBetween(min: number, max: number) {
 
 async function main() {
     console.log('🌱 Starting seed...');
+
+    // Clear all existing data to start clean!
+    console.log('🗑️ Clearing existing database data...');
+    await prisma.ticketHistory.deleteMany();
+    await prisma.ticketMessage.deleteMany();
+    await prisma.supportTicket.deleteMany();
+    await prisma.referral.deleteMany();
+    await prisma.gachaSpin.deleteMany();
+    await prisma.topupTransaction.deleteMany();
+    await prisma.couponUsage.deleteMany();
+    await prisma.transaction.deleteMany();
+    await prisma.order.deleteMany();
+    await prisma.adminLog.deleteMany();
+    await prisma.passwordReset.deleteMany();
+    await prisma.otpRequest.deleteMany();
+    await prisma.user.deleteMany();
+    await prisma.coupon.deleteMany();
+    await prisma.gameInputFieldOption.deleteMany();
+    await prisma.gameInputField.deleteMany();
+    await prisma.gamePackage.deleteMany();
+    await prisma.game.deleteMany();
+    await prisma.gameCategory.deleteMany();
+    await prisma.paymentMethod.deleteMany();
+    await prisma.banner.deleteMany();
+    await prisma.systemSetting.deleteMany();
+    await prisma.faqItem.deleteMany();
+
     const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD || 'Pass1234';
     const userPassword = 'User123321za.';
     const adminTestPassword = 'Admin123321za.';

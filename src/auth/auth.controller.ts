@@ -89,6 +89,6 @@ export class AuthController {
     @Get('me')
     @UseGuards(JwtAuthGuard)
     async getProfile(@Req() req) {
-        return req.user;
+        return this.authService.sanitizeUser(req.user);
     }
 }

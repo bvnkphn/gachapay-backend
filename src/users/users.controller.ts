@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards, Req, NotFoundException, Delete, Body, BadRequestException, Post } from '@nestjs/common';
+import { Controller, Get, UseGuards, Req, NotFoundException, Delete, Body, BadRequestException, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UsersService } from './users.service';
@@ -11,8 +11,11 @@ export class UsersController {
 
     @Get('profile')
     async getProfile(@Req() req) {
-        const { password_hash, ...user } = await this.usersService.findById(req.user.uuid);
-        return user;
+        const { password_hash, id, ...user } = await this.usersService.findById(req.user.uuid);
+        return {
+            ...user,
+            id: user.uuid
+        };
     }
 
     @Get('me')
@@ -41,9 +44,13 @@ export class UsersController {
     }
 
     @Get('me/gacha-spins')
-    async getGachaSpins(@Req() req, @Body() body: { limit?: number; offset?: number }) {
-        const limit = body?.limit ?? 10;
-        const offset = body?.offset ?? 0;
+    async getGachaSpins(
+        @Req() req,
+        @Query('limit') limitStr?: string,
+        @Query('offset') offsetStr?: string,
+    ) {
+        const limit = limitStr ? parseInt(limitStr, 10) : 10;
+        const offset = offsetStr ? parseInt(offsetStr, 10) : 0;
         return this.usersService.getGachaSpins(req.user.uuid, limit, offset);
     }
 

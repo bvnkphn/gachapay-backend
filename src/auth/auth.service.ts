@@ -333,8 +333,11 @@ export class AuthService {
             Math.random().toString(36).substring(2, 15);
     }
 
-    private sanitizeUser(user: any) {
-        const { password_hash, ...sanitized } = user;
-        return sanitized;
+    sanitizeUser(user: any) {
+        const { password_hash, id, ...sanitized } = user;
+        return {
+            ...sanitized,
+            id: user.uuid || user.id
+        };
     }
 }

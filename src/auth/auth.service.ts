@@ -27,7 +27,7 @@ export class AuthService {
     }
 
     async register(registerDto: RegisterDto) {
-        const { email, password, name } = registerDto;
+        const { email, password, name, referredBy } = registerDto;
 
         // Check if user exists
         const existingUser = await this.usersService.findByEmail(email);
@@ -44,6 +44,27 @@ export class AuthService {
             password_hash: hashedPassword,
             name,
         });
+
+        // Record referral connection if referredBy is set
+        if (referredBy) {
+            try {
+                const referrerId = BigInt(referredBy);
+                const referrer = await this.prisma.user.findUnique({
+                    where: { id: referrerId },
+                });
+                if (referrer && referrer.id !== user.id) {
+                    await this.prisma.referral.create({
+                        data: {
+                            referrerId: referrer.id,
+                            referredId: user.id,
+                            status: 'pending',
+                        },
+                    });
+                }
+            } catch (err) {
+                console.error('Failed to create referral record:', err);
+            }
+        }
 
         // Generate token
         const token = this.generateToken(user.uuid, user.email, user.role);

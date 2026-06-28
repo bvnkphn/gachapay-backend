@@ -222,4 +222,41 @@ export class UsersService {
             }))
         };
     }
+
+    async getReferrals(uuid: string) {
+        const user = await this.prisma.user.findUnique({
+            where: { uuid },
+            select: { id: true },
+        });
+        if (!user) throw new NotFoundException('User not found');
+
+        const referrals = await this.prisma.referral.findMany({
+            where: { referrerId: user.id },
+            include: {
+                referred: {
+                    select: { email: true, created_at: true },
+                },
+            },
+            orderBy: { createdAt: 'desc' },
+        });
+
+        const maskEmail = (email: string) => {
+            const parts = email.split('@');
+            if (parts.length !== 2) return email;
+            const name = parts[0];
+            const domain = parts[1];
+            if (name.length <= 3) {
+                return name[0] + '***@' + domain;
+            }
+            return name.slice(0, 3) + '***@' + domain;
+        };
+
+        return referrals.map((r) => ({
+            id: r.id.toString(),
+            email: maskEmail(r.referred.email),
+            joinedAt: r.referred.created_at,
+            status: r.status,
+            reward: r.rewardAmount,
+        }));
+    }
 }

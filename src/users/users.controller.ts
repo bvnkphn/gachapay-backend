@@ -29,6 +29,11 @@ export class UsersController {
         return data;
     }
 
+    @Get('me/referrals')
+    async getReferrals(@Req() req) {
+        return this.usersService.getReferrals(req.user.uuid);
+    }
+
     @Get('me/gacha-spins')
     async getGachaSpins(@Req() req, @Body() body: { limit?: number; offset?: number }) {
         const limit = body?.limit ?? 10;

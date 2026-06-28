@@ -54,6 +54,12 @@ export class OrdersController {
         });
     }
 
+    @Get('admin/stats')
+    @UseGuards(JwtAuthGuard, AdminGuard)
+    async getAdminDashboardStats(@Query('days') days = '7') {
+        return this.ordersService.getAdminDashboardStats(parseInt(days, 10));
+    }
+
     @Get('admin/revenue-by-game')
     @UseGuards(JwtAuthGuard, AdminGuard)
     async getRevenueByGame(@Query('gameId') gameId?: string) {

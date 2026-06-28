@@ -353,6 +353,96 @@ export class OrdersService {
         };
     }
 
+    // ─── Admin: GET /orders/admin/stats — Dashboard statistics ────────────────
+    async getAdminDashboardStats(days = 7) {
+        const now = new Date();
+        const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+        const daysAgoStart = new Date(); daysAgoStart.setDate(daysAgoStart.getDate() - days); daysAgoStart.setHours(0, 0, 0, 0);
+        const yesterday = new Date(todayStart); yesterday.setDate(yesterday.getDate() - 1);
+
+        const [allOrders, userCount, todayUsers, revenueByGame] = await Promise.all([
+            this.prisma.order.findMany({
+                where: { createdAt: { gte: daysAgoStart } },
+                orderBy: { createdAt: 'desc' },
+                select: { id: true, uid: true, email: true, gameName: true, packageName: true,
+                          packagePrice: true, finalPrice: true, paymentMethod: true,
+                          status: true, createdAt: true },
+            }),
+            this.prisma.user.count(),
+            this.prisma.user.count({ where: { created_at: { gte: todayStart } } }),
+            this.prisma.order.findMany({
+                where: { status: 'completed' },
+                select: { gameName: true, finalPrice: true, packagePrice: true, createdAt: true },
+            }),
+        ]);
+
+        const todayOrders = allOrders.filter(o => o.createdAt >= todayStart);
+        const completedOrders = allOrders.filter(o => o.status === 'completed');
+        const pendingOrders = allOrders.filter(o => o.status === 'pending');
+        const failedOrders = allOrders.filter(o => o.status === 'failed');
+        const todayCompleted = todayOrders.filter(o => o.status === 'completed');
+        const todayRevenue = todayCompleted.reduce((s, o) => s + Number(o.finalPrice ?? o.packagePrice), 0);
+
+        // Build chart data for requested days
+        const chartData: Record<string, number> = {};
+        const chartLabels: string[] = [];
+        for (let i = days - 1; i >= 0; i--) {
+            const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0);
+            const key = d.toISOString().slice(0, 10);
+            chartData[key] = 0;
+            chartLabels.push(key);
+        }
+        revenueByGame.filter(o => o.createdAt >= daysAgoStart).forEach(o => {
+            const key = o.createdAt.toISOString().slice(0, 10);
+            if (chartData[key] !== undefined) chartData[key] += Number(o.finalPrice ?? o.packagePrice);
+        });
+
+        // Top games by revenue (all time)
+        const gameMap: Record<string, { revenue: number; orders: number }> = {};
+        revenueByGame.forEach(o => {
+            const name = o.gameName;
+            if (!gameMap[name]) gameMap[name] = { revenue: 0, orders: 0 };
+            gameMap[name].revenue += Number(o.finalPrice ?? o.packagePrice);
+            gameMap[name].orders += 1;
+        });
+        const topGames = Object.entries(gameMap)
+            .sort((a, b) => b[1].revenue - a[1].revenue)
+            .slice(0, 5)
+            .map(([name, stats]) => ({ name, revenue: stats.revenue, orders: stats.orders }));
+
+        const successRate = allOrders.length > 0
+            ? Math.round((completedOrders.length / allOrders.length) * 1000) / 10
+            : 0;
+
+        return {
+            stats: {
+                todayRevenue,
+                todayOrders: todayOrders.length,
+                newMembersToday: todayUsers,
+                successRate,
+                pendingCount: pendingOrders.length,
+                failedCount: failedOrders.length,
+                totalUsers: userCount,
+            },
+            chart: {
+                labels: chartLabels,
+                values: chartLabels.map(k => chartData[k]),
+            },
+            topGames,
+            recentOrders: allOrders.slice(0, 20).map(o => ({
+                order_id: o.id.toString(),
+                uid: o.uid,
+                email: o.email,
+                game: o.gameName,
+                pkg: o.packageName,
+                amount: Number(o.finalPrice ?? o.packagePrice),
+                method: o.paymentMethod ?? 'unknown',
+                status: o.status,
+                created_at: o.createdAt,
+            })),
+        };
+    }
+
     async getPublicStats() {
         const completedOrdersCount = await this.prisma.order.count({
             where: { status: 'completed' },

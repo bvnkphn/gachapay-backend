@@ -54,6 +54,7 @@ model User {
   assignedTickets   SupportTicket[]   @relation("TicketAssignee")
   ticketMessages    TicketMessage[]
   ticketHistories   TicketHistory[]
+  gachaSpins        GachaSpin[]
   @@index([email])
   @@index([uuid])
   @@index([provider, providerId])
@@ -348,6 +349,9 @@ model TopupTransaction {
   methodId      BigInt
   amount        Decimal   @db.Decimal(10, 2)
   status        String    @default("pending") @db.VarChar(20)
+  slipUrl       String?   @db.VarChar(500)
+  bankCode      String?   @db.VarChar(20)
+  adminNote     String?   @db.Text
   paymentUrl    String?   @db.VarChar(500)
   expiresAt     DateTime? @db.Timestamp(0) @map("expires_at")
   completedAt   DateTime? @db.Timestamp(0)
@@ -362,6 +366,21 @@ model TopupTransaction {
   @@index([createdAt])
   @@index([referenceId])
   @@map("topup_transactions")
+}
+
+model GachaSpin {
+  id          BigInt   @id @default(autoincrement())
+  userId      BigInt
+  orderId     BigInt?  
+  prizeAmount Decimal  @db.Decimal(10,2)
+  prizeLabel  String?  @db.VarChar(255)
+  won         Boolean  @default(false)
+  createdAt   DateTime @default(now()) @db.Timestamp(0)
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([orderId])
+  @@map("gacha_spins")
 }
 
 model SystemSetting {

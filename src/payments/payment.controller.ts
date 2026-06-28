@@ -47,6 +47,7 @@ export class PaymentController {
     @Post('generate-qr')
     @UseGuards(JwtAuthGuard)
     async generateQRCode(
+        @Req() req: any,
         @Body()
         dto: {
             orderId: number;
@@ -62,6 +63,7 @@ export class PaymentController {
             dto.orderId,
             dto.amount,
             dto.method,
+            req.user?.id,
         );
     }
 

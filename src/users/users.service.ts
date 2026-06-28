@@ -162,16 +162,64 @@ export class UsersService {
         });
         if (!user) throw new NotFoundException('User not found');
 
-        const updated = await this.prisma.user.update({
-            where: { id: user.id },
-            data: {
-                wallet_balance: { increment: amount }
-            }
+        const updated = await this.prisma.$transaction(async (txPrisma) => {
+            const u = await txPrisma.user.update({
+                where: { id: user.id },
+                data: { wallet_balance: { increment: amount } },
+            });
+
+            return u;
         });
 
         return {
             success: true,
-            new_balance: updated.wallet_balance
+            new_balance: updated.wallet_balance,
+        };
+    }
+
+    async recordGachaSpin(uuid: string, payload: { prizeAmount: number; prizeLabel?: string; won?: boolean; orderId?: bigint | null }) {
+        const user = await this.prisma.user.findUnique({ where: { uuid }, select: { id: true } });
+        if (!user) throw new NotFoundException('User not found');
+
+        const created = await this.prisma.gachaSpin.create({
+            data: {
+                userId: BigInt(user.id),
+                orderId: payload.orderId ?? null,
+                prizeAmount: payload.prizeAmount ?? 0,
+                prizeLabel: payload.prizeLabel ?? null,
+                won: !!payload.won,
+            },
+        });
+
+        return { success: true, spinId: created.id };
+    }
+
+    async getGachaSpins(uuid: string, limit = 10, offset = 0) {
+        const user = await this.prisma.user.findUnique({ where: { uuid }, select: { id: true } });
+        if (!user) throw new NotFoundException('User not found');
+
+        const [total, items] = await Promise.all([
+            this.prisma.gachaSpin.count({ where: { userId: BigInt(user.id) } }),
+            this.prisma.gachaSpin.findMany({
+                where: { userId: BigInt(user.id) },
+                orderBy: { createdAt: 'desc' },
+                take: limit,
+                skip: offset,
+            }),
+        ]);
+
+        return {
+            total,
+            limit,
+            offset,
+            items: items.map(s => ({
+                id: s.id.toString(),
+                prize_amount: s.prizeAmount,
+                prize_label: s.prizeLabel,
+                won: s.won,
+                created_at: s.createdAt,
+                order_id: s.orderId ? s.orderId.toString() : null,
+            }))
         };
     }
 }

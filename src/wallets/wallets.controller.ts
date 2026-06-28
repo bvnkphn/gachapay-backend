@@ -20,4 +20,15 @@ export class WalletsController {
     async gachaClaim(@Req() req, @Body() body: { amount: number }) {
         return this.usersService.claimGachaReward(req.user.uuid, body.amount);
     }
+
+    @Post('me/gacha-spin')
+    async gachaSpin(@Req() req, @Body() body: { prizeAmount: number; prizeLabel?: string; won?: boolean; orderId?: number }) {
+        const orderIdBig = body.orderId ? BigInt(body.orderId) : null;
+        return this.usersService.recordGachaSpin(req.user.uuid, {
+            prizeAmount: body.prizeAmount ?? 0,
+            prizeLabel: body.prizeLabel,
+            won: !!body.won,
+            orderId: orderIdBig,
+        });
+    }
 }

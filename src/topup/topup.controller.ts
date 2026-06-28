@@ -41,4 +41,13 @@ export class TopupController {
     simulateCancel(@Param('referenceId') referenceId: string, @Req() req) {
         return this.topupService.simulateCancel(referenceId, req.user.id);
     }
+
+    @Patch(':referenceId/submit-slip')
+    submitSlip(
+        @Param('referenceId') referenceId: string,
+        @Req() req,
+        @Body() body: { slipUrl: string; bankCode?: string },
+    ) {
+        return this.topupService.submitSlip(referenceId, req.user.id, body.slipUrl, body.bankCode);
+    }
 }

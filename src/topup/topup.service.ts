@@ -138,13 +138,21 @@ export class TopupService {
                 data: { status: 'completed', completedAt: new Date() },
             });
 
+            // Always award points (EXP) for completed topup transactions,
+            // even if they are associated with an order. Only increment the
+            // wallet balance for standalone top-ups (not tied to an order).
+            const userUpdateData: any = {
+                point_balance: newPoints,
+                tier: newTier,
+            };
+
+            if (!tx.orderId) {
+                userUpdateData.wallet_balance = { increment: tx.amount };
+            }
+
             await txPrisma.user.update({
                 where: { id: userId },
-                data: {
-                    wallet_balance: { increment: tx.amount },
-                    point_balance: newPoints,
-                    tier: newTier,
-                },
+                data: userUpdateData,
             });
 
             return updatedTx;
@@ -172,6 +180,29 @@ export class TopupService {
         });
 
         return { reference_id: updated.referenceId, status: updated.status };
+    }
+
+    // User submits bank transfer slip for admin review
+    async submitSlip(referenceId: string, userId: bigint, slipUrl: string, bankCode?: string) {
+        const tx = await this.prisma.topupTransaction.findUnique({ where: { referenceId } });
+        if (!tx || tx.userId !== userId) throw new NotFoundException('Transaction not found');
+        if (tx.status !== 'pending') throw new ConflictException(`Transaction is already '${tx.status}'`);
+
+        const updated = await this.prisma.topupTransaction.update({
+            where: { referenceId },
+            data: {
+                slipUrl,
+                bankCode: bankCode ?? null,
+                status: 'awaiting_review',
+            },
+        });
+
+        return {
+            reference_id: updated.referenceId,
+            status: updated.status,
+            slip_url: updated.slipUrl,
+            bank_code: updated.bankCode,
+        };
     }
 
     private calculateTier(points: number): string {

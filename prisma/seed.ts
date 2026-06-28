@@ -18,11 +18,14 @@ async function main() {
     console.log('🌱 Starting seed...');
     const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD || 'Pass1234';
     const userPassword = process.env.USER_DEFAULT_PASSWORD || 'Test1234!';
+    const adminTestPassword = 'Admin123321za.';
     const passwordAdmin = await bcrypt.hash(adminPassword, 10);
     const passwordUser  = await bcrypt.hash(userPassword, 10);
+    const passwordAdminTest = await bcrypt.hash(adminTestPassword, 10);
     console.log('🔑 Using passwords from .env (or defaults if not set)');
 
     await prisma.paymentMethod.upsert({ where: { code: 'promptpay' }, update: {}, create: { code: 'promptpay', name: 'PromptPay (พร้อมเพย์)', icon: 'PP', color: '#1a56db', isActive: true } });
+    await prisma.paymentMethod.upsert({ where: { code: 'bank_transfer' }, update: {}, create: { code: 'bank_transfer', name: 'Bank Transfer', icon: 'B', color: '#0d9488', isActive: true } });
     await prisma.paymentMethod.upsert({ where: { code: 'truemoney' }, update: {}, create: { code: 'truemoney', name: 'TrueMoney Wallet',       icon: 'TW', color: '#f97316', isActive: true } });
     await prisma.paymentMethod.upsert({ where: { code: 'wallet' },    update: {}, create: { code: 'wallet',    name: 'CYBERPAY Wallet',         icon: 'CW', color: '#34d399', isActive: true } });
 
@@ -83,6 +86,12 @@ async function main() {
         where: { email: process.env.EMAIL_USER },
         update: { password_hash: passwordAdmin, role: 'ADMIN' },
         create: { email: process.env.EMAIL_USER, name: 'Super Admin', password_hash: passwordAdmin, tier: 'PLATINUM', point_balance: 0, wallet_balance: 0, role: 'ADMIN', isEmailVerified: true, provider: 'local' },
+    });
+
+    await prisma.user.upsert({
+        where: { email: 'admin@test.com' },
+        update: { password_hash: passwordAdminTest, role: 'ADMIN' },
+        create: { email: 'admin@test.com', name: 'Admin User', password_hash: passwordAdminTest, tier: 'PLATINUM', point_balance: 0, wallet_balance: 0, role: 'ADMIN', isEmailVerified: true, provider: 'local' },
     });
 
     const users = await Promise.all([

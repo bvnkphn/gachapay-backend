@@ -27,21 +27,14 @@ export class PaymentService {
             data: { status: 'completed', paymentMethod: 'gacha_wallet', updatedAt: new Date() },
         });
 
-        await this.prisma.topupTransaction.create({
-            data: {
-                userId,
-                methodId: BigInt(1),
-                amount,
-                status: 'completed',
-                referenceId: `GACHA_${orderId}_${Date.now()}`,
-                completedAt: new Date(),
-            },
-        });
+        // NOTE: do not create a topup transaction for internal wallet payments.
+        // Wallet payments decrement the user's balance and mark the order completed,
+        // but they should not be treated as a top-up that increases cumulative topup totals.
 
         return { success: true, message: 'Payment processed successfully', data: { orderId, status: 'completed' } };
     }
 
-    async generateQRCode(orderId: number, amount: number, method: 'promptpay' | 'truemoney') {
+    async generateQRCode(orderId: number, amount: number, method: 'promptpay' | 'truemoney', requesterUserId?: bigint) {
         const referenceNumber = `${method.toUpperCase()}_${orderId}_${Date.now()}`;
         const mockQRCode = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${referenceNumber}`;
 
@@ -50,11 +43,14 @@ export class PaymentService {
             where: { id: BigInt(orderId) },
             select: { userId: true },
         });
-        const userId = order?.userId || BigInt(1);
+
+        // Prefer the authenticated requester id (if provided). If not, fall back
+        // to the order's userId or null.
+        const userId = requesterUserId ?? order?.userId ?? null;
 
         await this.prisma.topupTransaction.create({
             data: {
-                userId,
+                userId: userId ?? BigInt(1),
                 orderId: BigInt(orderId),
                 methodId: method === 'promptpay' ? BigInt(2) : BigInt(3),
                 amount,
@@ -82,17 +78,28 @@ export class PaymentService {
     }
 
     async updatePaymentStatus(referenceId: string, status: 'completed' | 'failed' | 'cancelled', amount: number, userId: bigint) {
-        await this.prisma.topupTransaction.updateMany({
-            where: { referenceId },
-            data: { status, completedAt: status === 'completed' ? new Date() : null },
-        });
+        // Find the related topup transaction (if any)
+        const tx = await this.prisma.topupTransaction.findUnique({ where: { referenceId } });
 
-        if (status === 'completed') {
-            await this.prisma.user.update({
-                where: { id: userId },
-                data: { wallet_balance: { increment: amount } },
+        if (tx) {
+            await this.prisma.topupTransaction.update({
+                where: { referenceId },
+                data: { status, completedAt: status === 'completed' ? new Date() : null },
             });
 
+            // Only increment wallet balance for standalone top-up transactions
+            // (i.e., transactions that are NOT tied to an order). This prevents
+            // order payments from being treated as top-ups and inflating cumulative
+            // top-up totals.
+            if (status === 'completed' && !tx.orderId) {
+                await this.prisma.user.update({
+                    where: { id: userId },
+                    data: { wallet_balance: { increment: amount } },
+                });
+            }
+        }
+
+        if (status === 'completed') {
             // Check if referenceId follows the pattern METHOD_ORDERID_TIMESTAMP to auto-complete the order
             const parts = referenceId.split('_');
             if (parts.length >= 3) {

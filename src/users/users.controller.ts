@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards, Req, NotFoundException } from '@nestjs/common';
+import { Controller, Get, UseGuards, Req, NotFoundException, Delete, Body, BadRequestException } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UsersService } from './users.service';
@@ -28,4 +28,29 @@ export class UsersController {
         if (!data) throw new NotFoundException('User not found');
         return data;
     }
+
+    @Get('me/gacha-spins')
+    async getGachaSpins(@Req() req, @Body() body: { limit?: number; offset?: number }) {
+        const limit = body?.limit ?? 10;
+        const offset = body?.offset ?? 0;
+        return this.usersService.getGachaSpins(req.user.uuid, limit, offset);
+    }
+
+    @Delete('me')
+    async deleteMe(@Req() req, @Body() body: { confirmPhrase: string; password: string }) {
+        const CONFIRM_PHRASE = 'DELETE';
+        if (body.confirmPhrase !== CONFIRM_PHRASE) throw new BadRequestException('Confirmation phrase mismatch');
+
+        const user = await this.usersService.findById(req.user.uuid);
+        if (!user) throw new NotFoundException('User not found');
+
+        // Validate password
+        const bcrypt = require('bcryptjs');
+        const match = await bcrypt.compare(body.password || '', user.password_hash || '');
+        if (!match) throw new BadRequestException('Invalid password');
+
+        await this.usersService.delete(req.user.uuid);
+        return { success: true };
+    }
 }
+

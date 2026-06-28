@@ -90,90 +90,17 @@ async function main() {
 
     await prisma.user.upsert({
         where: { email: 'admin@test.com' },
-        update: { password_hash: passwordAdminTest, role: 'ADMIN' },
+        update: { password_hash: passwordAdminTest, role: 'ADMIN', point_balance: 0, wallet_balance: 0 },
         create: { email: 'admin@test.com', name: 'Admin User', password_hash: passwordAdminTest, tier: 'PLATINUM', point_balance: 0, wallet_balance: 0, role: 'ADMIN', isEmailVerified: true, provider: 'local' },
     });
 
-    const users = await Promise.all([
-        prisma.user.upsert({ where: { email: 'somchai@test.com' }, update: {}, create: { email: 'somchai@test.com', name: 'สมชาย ใจดี',   password_hash: passwordUser, tier: 'GOLD',     point_balance: 15200, wallet_balance: 2500, role: 'USER', isEmailVerified: true, provider: 'local' } }),
-        prisma.user.upsert({ where: { email: 'pailin@test.com'  }, update: {}, create: { email: 'pailin@test.com',  name: 'ไพลิน สวยงาม', password_hash: passwordUser, tier: 'SILVER',   point_balance: 4800,  wallet_balance: 800,  role: 'USER', isEmailVerified: true, provider: 'local' } }),
-        prisma.user.upsert({ where: { email: 'nat@test.com'     }, update: {}, create: { email: 'nat@test.com',     name: 'ณัฐ เก่งมาก',  password_hash: passwordUser, tier: 'BRONZE',   point_balance: 950,   wallet_balance: 200,  role: 'USER', isEmailVerified: true, provider: 'local' } }),
-        prisma.user.upsert({ where: { email: 'fah@test.com'     }, update: {}, create: { email: 'fah@test.com',     name: 'ฟ้า มีสุข',    password_hash: passwordUser, tier: 'PLATINUM', point_balance: 62000, wallet_balance: 9800, role: 'USER', isEmailVerified: true, provider: 'local' } }),
-        prisma.user.upsert({ where: { email: 'ming@test.com'    }, update: {}, create: { email: 'ming@test.com',    name: 'มิ้ง นักเล่น', password_hash: passwordUser, tier: 'SILVER',   point_balance: 3200,  wallet_balance: 450,  role: 'USER', isEmailVerified: true, provider: 'local' } }),
-    ]);
-    console.log('✅ Users ready');
+    await prisma.user.upsert({
+        where: { email: 'user@test.com' },
+        update: { password_hash: passwordUser, role: 'USER', point_balance: 0, wallet_balance: 0 },
+        create: { email: 'user@test.com', name: 'General User', password_hash: passwordUser, tier: 'BRONZE', point_balance: 0, wallet_balance: 0, role: 'USER', isEmailVerified: true, provider: 'local' },
+    });
 
-    const templates = [
-        { game: freeFire, pkgIdx: 0, userIdx: 0, uid: 'FF001234', status: 'completed',  method: 'promptpay', daysBack: 0  },
-        { game: freeFire, pkgIdx: 1, userIdx: 1, uid: 'FF002345', status: 'completed',  method: 'truemoney', daysBack: 0  },
-        { game: freeFire, pkgIdx: 2, userIdx: 2, uid: 'FF003456', status: 'failed',     method: 'promptpay', daysBack: 0  },
-        { game: freeFire, pkgIdx: 3, userIdx: 3, uid: 'FF004567', status: 'completed',  method: 'wallet',    daysBack: 1  },
-        { game: freeFire, pkgIdx: 4, userIdx: 4, uid: 'FF005678', status: 'completed',  method: 'promptpay', daysBack: 1  },
-        { game: freeFire, pkgIdx: 0, userIdx: 0, uid: 'FF006789', status: 'pending',    method: 'truemoney', daysBack: 1  },
-        { game: freeFire, pkgIdx: 1, userIdx: 1, uid: 'FF007890', status: 'completed',  method: 'promptpay', daysBack: 2  },
-        { game: freeFire, pkgIdx: 2, userIdx: 3, uid: 'FF008901', status: 'completed',  method: 'wallet',    daysBack: 2  },
-        { game: freeFire, pkgIdx: 3, userIdx: 2, uid: 'FF009012', status: 'refunded',   method: 'promptpay', daysBack: 3  },
-        { game: freeFire, pkgIdx: 0, userIdx: 4, uid: 'FF010123', status: 'completed',  method: 'truemoney', daysBack: 3  },
-        { game: freeFire, pkgIdx: 1, userIdx: 0, uid: 'FF011234', status: 'completed',  method: 'promptpay', daysBack: 5  },
-        { game: freeFire, pkgIdx: 4, userIdx: 3, uid: 'FF012345', status: 'completed',  method: 'wallet',    daysBack: 7  },
-        { game: freeFire, pkgIdx: 2, userIdx: 1, uid: 'FF013456', status: 'completed',  method: 'promptpay', daysBack: 10 },
-        { game: freeFire, pkgIdx: 3, userIdx: 4, uid: 'FF014567', status: 'failed',     method: 'truemoney', daysBack: 12 },
-        { game: freeFire, pkgIdx: 0, userIdx: 2, uid: 'FF015678', status: 'completed',  method: 'promptpay', daysBack: 15 },
-        { game: freeFire, pkgIdx: 1, userIdx: 3, uid: 'FF016789', status: 'completed',  method: 'wallet',    daysBack: 18 },
-        { game: freeFire, pkgIdx: 2, userIdx: 0, uid: 'FF017890', status: 'completed',  method: 'promptpay', daysBack: 20 },
-        { game: freeFire, pkgIdx: 4, userIdx: 1, uid: 'FF018901', status: 'completed',  method: 'truemoney', daysBack: 25 },
-        { game: freeFire, pkgIdx: 3, userIdx: 4, uid: 'FF019012', status: 'completed',  method: 'promptpay', daysBack: 28 },
-        { game: freeFire, pkgIdx: 0, userIdx: 2, uid: 'FF020123', status: 'completed',  method: 'wallet',    daysBack: 30 },
-        { game: mobileLegends, pkgIdx: 0, userIdx: 1, uid: 'ML001234', status: 'completed',  method: 'promptpay', daysBack: 0  },
-        { game: mobileLegends, pkgIdx: 1, userIdx: 0, uid: 'ML002345', status: 'completed',  method: 'wallet',    daysBack: 0  },
-        { game: mobileLegends, pkgIdx: 2, userIdx: 3, uid: 'ML003456', status: 'processing', method: 'truemoney', daysBack: 0  },
-        { game: mobileLegends, pkgIdx: 3, userIdx: 4, uid: 'ML004567', status: 'completed',  method: 'promptpay', daysBack: 1  },
-        { game: mobileLegends, pkgIdx: 4, userIdx: 2, uid: 'ML005678', status: 'completed',  method: 'wallet',    daysBack: 2  },
-        { game: mobileLegends, pkgIdx: 0, userIdx: 0, uid: 'ML006789', status: 'failed',     method: 'truemoney', daysBack: 3  },
-        { game: mobileLegends, pkgIdx: 1, userIdx: 1, uid: 'ML007890', status: 'completed',  method: 'promptpay', daysBack: 4  },
-        { game: mobileLegends, pkgIdx: 2, userIdx: 3, uid: 'ML008901', status: 'completed',  method: 'wallet',    daysBack: 7  },
-        { game: mobileLegends, pkgIdx: 3, userIdx: 4, uid: 'ML009012', status: 'completed',  method: 'promptpay', daysBack: 10 },
-        { game: mobileLegends, pkgIdx: 4, userIdx: 2, uid: 'ML010123', status: 'completed',  method: 'truemoney', daysBack: 14 },
-        { game: mobileLegends, pkgIdx: 0, userIdx: 0, uid: 'ML011234', status: 'completed',  method: 'promptpay', daysBack: 18 },
-        { game: mobileLegends, pkgIdx: 1, userIdx: 1, uid: 'ML012345', status: 'completed',  method: 'wallet',    daysBack: 22 },
-        { game: mobileLegends, pkgIdx: 2, userIdx: 3, uid: 'ML013456', status: 'cancelled',  method: 'promptpay', daysBack: 26 },
-        { game: mobileLegends, pkgIdx: 3, userIdx: 4, uid: 'ML014567', status: 'completed',  method: 'truemoney', daysBack: 29 },
-        { game: genshin, pkgIdx: 0, userIdx: 3, uid: 'GI001234', status: 'completed', method: 'promptpay', daysBack: 0  },
-        { game: genshin, pkgIdx: 1, userIdx: 4, uid: 'GI002345', status: 'completed', method: 'wallet',    daysBack: 0  },
-        { game: genshin, pkgIdx: 2, userIdx: 0, uid: 'GI003456', status: 'completed', method: 'promptpay', daysBack: 1  },
-        { game: genshin, pkgIdx: 3, userIdx: 1, uid: 'GI004567', status: 'failed',    method: 'truemoney', daysBack: 2  },
-        { game: genshin, pkgIdx: 4, userIdx: 3, uid: 'GI005678', status: 'completed', method: 'promptpay', daysBack: 3  },
-        { game: genshin, pkgIdx: 0, userIdx: 2, uid: 'GI006789', status: 'completed', method: 'wallet',    daysBack: 6  },
-        { game: genshin, pkgIdx: 1, userIdx: 4, uid: 'GI007890', status: 'completed', method: 'promptpay', daysBack: 9  },
-        { game: genshin, pkgIdx: 2, userIdx: 0, uid: 'GI008901', status: 'completed', method: 'truemoney', daysBack: 13 },
-        { game: genshin, pkgIdx: 3, userIdx: 1, uid: 'GI009012', status: 'refunded',  method: 'promptpay', daysBack: 17 },
-        { game: genshin, pkgIdx: 4, userIdx: 3, uid: 'GI010123', status: 'completed', method: 'wallet',    daysBack: 21 },
-        { game: genshin, pkgIdx: 2, userIdx: 2, uid: 'GI011234', status: 'completed', method: 'promptpay', daysBack: 27 },
-        { game: pubg, pkgIdx: 0, userIdx: 2, uid: 'PUBG001', status: 'completed', method: 'truemoney', daysBack: 0  },
-        { game: pubg, pkgIdx: 1, userIdx: 3, uid: 'PUBG002', status: 'completed', method: 'promptpay', daysBack: 1  },
-        { game: pubg, pkgIdx: 2, userIdx: 4, uid: 'PUBG003', status: 'pending',   method: 'wallet',    daysBack: 1  },
-        { game: pubg, pkgIdx: 3, userIdx: 0, uid: 'PUBG004', status: 'completed', method: 'promptpay', daysBack: 2  },
-        { game: pubg, pkgIdx: 0, userIdx: 1, uid: 'PUBG005', status: 'failed',    method: 'truemoney', daysBack: 4  },
-        { game: pubg, pkgIdx: 1, userIdx: 2, uid: 'PUBG006', status: 'completed', method: 'promptpay', daysBack: 6  },
-        { game: pubg, pkgIdx: 2, userIdx: 3, uid: 'PUBG007', status: 'completed', method: 'wallet',    daysBack: 11 },
-        { game: pubg, pkgIdx: 3, userIdx: 4, uid: 'PUBG008', status: 'completed', method: 'promptpay', daysBack: 16 },
-        { game: pubg, pkgIdx: 0, userIdx: 0, uid: 'PUBG009', status: 'completed', method: 'truemoney', daysBack: 23 },
-        { game: pubg, pkgIdx: 1, userIdx: 1, uid: 'PUBG010', status: 'completed', method: 'promptpay', daysBack: 29 },
-    ];
-
-    let orderCount = 0;
-    for (const t of templates) {
-        const pkg  = t.game.packages[t.pkgIdx];
-        const user = users[t.userIdx];
-        const createdAt = t.daysBack === 0 ? hoursAgo(randomBetween(1, 8)) : daysAgo(t.daysBack);
-        const price = pkg.price as any;
-        await prisma.order.create({
-            data: { userId: user.id, gameId: t.game.id, gameName: t.game.name, packageId: pkg.id, packageName: pkg.name, packagePrice: price, finalPrice: price, uid: t.uid, email: user.email, status: t.status, paymentMethod: t.method, createdAt },
-        });
-        orderCount++;
-    }
-    console.log(`✅ Orders: ${orderCount} รายการ`);
-    console.log('\n🔑 Admin: ' + process.env.EMAIL_USER + ' / ' + process.env.EMAIL_PASSWORD);
+    console.log('✅ Users registered cleanly');
 }
 
 main()

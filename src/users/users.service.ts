@@ -251,12 +251,90 @@ export class UsersService {
             return name.slice(0, 3) + '***@' + domain;
         };
 
-        return referrals.map((r) => ({
-            id: r.id.toString(),
-            email: maskEmail(r.referred.email),
-            joinedAt: r.referred.created_at,
-            status: r.status,
-            reward: r.rewardAmount,
-        }));
+        const completedOrdersCount = await this.prisma.order.count({
+            where: { userId: user.id, status: 'completed' },
+        });
+        const completedTopupsCount = await this.prisma.topupTransaction.count({
+            where: { userId: user.id, status: 'completed' },
+        });
+        const hasPurchased = (completedOrdersCount + completedTopupsCount) > 0;
+
+        const referralReceived = await this.prisma.referral.findUnique({
+            where: { referredId: user.id },
+            include: {
+                referrer: {
+                    select: { email: true, id: true },
+                },
+            },
+        });
+
+        return {
+            hasPurchased,
+            referredBy: referralReceived ? {
+                id: referralReceived.referrer.id.toString(),
+                email: maskEmail(referralReceived.referrer.email),
+            } : null,
+            referrals: referrals.map((r) => ({
+                id: r.id.toString(),
+                email: maskEmail(r.referred.email),
+                joinedAt: r.referred.created_at,
+                status: r.status,
+                reward: r.rewardAmount,
+            })),
+        };
+    }
+
+    async setReferrer(uuid: string, referrerCode: string) {
+        const user = await this.prisma.user.findUnique({
+            where: { uuid },
+            select: { id: true },
+        });
+        if (!user) throw new NotFoundException('User not found');
+
+        const existingReferral = await this.prisma.referral.findUnique({
+            where: { referredId: user.id },
+        });
+        if (existingReferral) {
+            throw new BadRequestException('คุณได้รับการแนะนำโดยผู้อื่นอยู่แล้ว');
+        }
+
+        const completedOrdersCount = await this.prisma.order.count({
+            where: { userId: user.id, status: 'completed' },
+        });
+        const completedTopupsCount = await this.prisma.topupTransaction.count({
+            where: { userId: user.id, status: 'completed' },
+        });
+        if ((completedOrdersCount + completedTopupsCount) > 0) {
+            throw new BadRequestException('ไม่สามารถระบุผู้แนะนำได้หลังจากทำรายการสำเร็จแล้ว');
+        }
+
+        const referrerIdStr = referrerCode.replace(/.*\/ref\//, "").trim();
+        let referrerId: bigint;
+        try {
+            referrerId = BigInt(referrerIdStr);
+        } catch {
+            throw new BadRequestException('รหัสผู้แนะนำไม่ถูกต้อง');
+        }
+
+        if (referrerId === user.id) {
+            throw new BadRequestException('ไม่สามารถแนะนำตัวเองได้');
+        }
+
+        const referrer = await this.prisma.user.findUnique({
+            where: { id: referrerId },
+        });
+        if (!referrer) {
+            throw new NotFoundException('ไม่พบผู้แนะนำด้วยรหัสนี้');
+        }
+
+        await this.prisma.referral.create({
+            data: {
+                referrerId: referrer.id,
+                referredId: user.id,
+                status: 'pending',
+            },
+        });
+
+        return { success: true };
     }
 }

@@ -34,6 +34,12 @@ export class UsersController {
         return this.usersService.getReferrals(req.user.uuid);
     }
 
+    @Post('me/referred-by')
+    async setReferrer(@Req() req, @Body('referrerCode') referrerCode: string) {
+        if (!referrerCode) throw new BadRequestException('กรุณาระบุรหัสผู้แนะนำ');
+        return this.usersService.setReferrer(req.user.uuid, referrerCode);
+    }
+
     @Get('me/gacha-spins')
     async getGachaSpins(@Req() req, @Body() body: { limit?: number; offset?: number }) {
         const limit = body?.limit ?? 10;

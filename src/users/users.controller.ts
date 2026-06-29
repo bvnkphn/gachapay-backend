@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards, Req, NotFoundException, Delete, Body, BadRequestException, Post, Query } from '@nestjs/common';
+import { Controller, Get, UseGuards, Req, NotFoundException, Delete, Body, BadRequestException, Post, Query, Param, Patch, Put } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UsersService } from './users.service';
@@ -69,6 +69,34 @@ export class UsersController {
 
         await this.usersService.delete(req.user.uuid);
         return { success: true };
+    }
+
+    @Get('me/addresses')
+    async getAddresses(@Req() req) {
+        return this.usersService.getAddresses(req.user.uuid);
+    }
+
+    @Post('me/addresses')
+    async addAddress(@Req() req, @Body() body: any) {
+        if (!body.recipientName || !body.phone || !body.addressLine1 || !body.district || !body.province || !body.postalCode) {
+            throw new BadRequestException('ข้อมูลที่อยู่ไม่ครบถ้วน');
+        }
+        return this.usersService.addAddress(req.user.uuid, body);
+    }
+
+    @Put('me/addresses/:id')
+    async updateAddress(@Req() req, @Param('id') id: string, @Body() body: any) {
+        return this.usersService.updateAddress(req.user.uuid, id, body);
+    }
+
+    @Delete('me/addresses/:id')
+    async deleteAddress(@Req() req, @Param('id') id: string) {
+        return this.usersService.deleteAddress(req.user.uuid, id);
+    }
+
+    @Patch('me/addresses/:id/default')
+    async setDefaultAddress(@Req() req, @Param('id') id: string) {
+        return this.usersService.setDefaultAddress(req.user.uuid, id);
     }
 }
 

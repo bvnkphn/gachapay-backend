@@ -58,6 +58,7 @@ model User {
   gachaSpins        GachaSpin[]
   referralsSent     Referral[]        @relation("ReferralsSent")
   referralReceived  Referral?         @relation("ReferralReceived")
+  addresses         UserAddress[]
   @@index([email])
   @@index([uuid])
   @@index([provider, providerId])
@@ -487,5 +488,26 @@ model Referral {
   @@index([referrerId])
   @@index([referredId])
   @@map("referrals")
+}
+
+model UserAddress {
+  id            BigInt   @id @default(autoincrement())
+  userId        BigInt
+  recipientName String   @db.VarChar(255)
+  phone         String   @db.VarChar(20)
+  addressLine1  String   @db.VarChar(255)
+  addressLine2  String?  @db.VarChar(255)
+  subDistrict   String?  @db.VarChar(100)
+  district      String   @db.VarChar(100)
+  province      String   @db.VarChar(100)
+  postalCode    String   @db.VarChar(20)
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now()) @db.Timestamp(0)
+  updatedAt     DateTime @updatedAt @db.Timestamp(0)
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_addresses")
 }
 

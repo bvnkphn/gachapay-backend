@@ -296,7 +296,7 @@ export class UsersService {
             where: { referredId: user.id },
             include: {
                 referrer: {
-                    select: { email: true, id: true },
+                    select: { email: true, id: true, name: true },
                 },
             },
         });
@@ -306,6 +306,7 @@ export class UsersService {
             referredBy: referralReceived ? {
                 id: referralReceived.referrer.id.toString(),
                 email: maskEmail(referralReceived.referrer.email),
+                name: referralReceived.referrer.name,
             } : null,
             referrals: referrals.map((r) => ({
                 id: r.id.toString(),

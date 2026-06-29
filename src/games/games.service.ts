@@ -132,10 +132,51 @@ export class GamesService {
         } catch { return null; }
     }
 
+    private formatImageUrl(url?: string): string {
+        if (!url) return '';
+        if (url.startsWith('http') || url.startsWith('data:')) return url;
+        const base = process.env.BACKEND_URL || 'http://localhost:3001';
+        return `${base.replace(/\/$/, '')}${url}`;
+    }
+
     private transformDbGame(game: any) {
+        const rawImage = game.image || this.getGameImageUrl(game.slug);
+        const now = new Date();
+        const formattedPackages = (game.packages || []).map((pkg: any) => {
+            const price = Number(pkg.price);
+            const cost = Number(pkg.cost ?? 0);
+            const originalPrice = Number(pkg.originalPrice ?? price);
+            const flashSalePrice = pkg.flashSalePrice ? Number(pkg.flashSalePrice) : null;
+            const isFlashSaleActive =
+                flashSalePrice !== null &&
+                pkg.flashSaleStart !== null &&
+                pkg.flashSaleEnd !== null &&
+                now >= new Date(pkg.flashSaleStart) &&
+                now <= new Date(pkg.flashSaleEnd);
+
+            return {
+                id: pkg.id.toString(),
+                name: pkg.name,
+                description: pkg.description,
+                sku: pkg.sku,
+                price,
+                originalPrice,
+                cost,
+                discount: pkg.discount,
+                effectivePrice: isFlashSaleActive ? flashSalePrice! : price,
+                flashSale: {
+                    isActive: isFlashSaleActive,
+                    price: flashSalePrice,
+                    start: pkg.flashSaleStart,
+                    end: pkg.flashSaleEnd,
+                }
+            };
+        });
+
         return {
             ...game,
-            image: game.image || this.getGameImageUrl(game.slug),
+            image: this.formatImageUrl(rawImage),
+            packages: formattedPackages,
             fields: game.inputFields.map((field: any) => ({
                 name: field.key, label: field.label, placeholder: field.placeholder || '',
                 type: field.type, required: field.required, regex: field.regex, helpText: field.helpText,
@@ -243,34 +284,92 @@ export class GamesService {
     }
 
     private async transformGameData(games: any[]) {
-        const transformedGames = await Promise.all(games.map(async (game: any) => ({
-            id: game.id || game.key || Math.random(),
-            name: game.name,
-            slug: game.key,
-            image: game.image || this.getGameImageUrl(game.key),
-            category: await this.getGameCategory(game.key),
-            label: this.determineLabel(game.label || 'NONE'),
-            description: game.description || null,
-            packages: (game.items || []).map((item: any) => ({
-                id: item.sku || item.id || item.key,
-                name: item.name,
-                description: item.description || null,
-                count: item.name,
-                price: typeof item.price === 'string' ? parseFloat(item.price) : (item.price || 0),
-            })),
-            fields: (game.inputs || []).map((input: any) => ({
-                name: input.key || input.name,
-                label: input.title || input.label || input.key,
-                placeholder: input.placeholder || '',
-                type: input.type || 'text',
-                required: input.required !== false,
-                options: (input.options || []).map((opt: any) => ({
-                    label: opt.label || opt.name,
-                    value: opt.value || opt.key,
+        const transformedGames = await Promise.all(games.map(async (game: any) => {
+            const dbGame = await this.prisma.game.findUnique({
+                where: { slug: game.key },
+                include: {
+                    category: true,
+                    packages: { where: { isActive: true } }
+                }
+            });
+            const isActive = dbGame ? dbGame.isActive : true;
+            const dbPackages = dbGame ? dbGame.packages : [];
+            const now = new Date();
+
+            const transformedPackages = (game.items || []).map((item: any) => {
+                const sku = item.sku || item.id || item.key;
+                const dbPkg = dbPackages.find(p => p.sku === sku);
+
+                if (dbPkg) {
+                    const price = Number(dbPkg.price);
+                    const originalPrice = Number(dbPkg.originalPrice ?? price);
+                    const flashSalePrice = dbPkg.flashSalePrice ? Number(dbPkg.flashSalePrice) : null;
+                    const isFlashSaleActive =
+                        flashSalePrice !== null &&
+                        dbPkg.flashSaleStart !== null &&
+                        dbPkg.flashSaleEnd !== null &&
+                        now >= new Date(dbPkg.flashSaleStart) &&
+                        now <= new Date(dbPkg.flashSaleEnd);
+
+                    return {
+                        id: dbPkg.id.toString(),
+                        name: dbPkg.name,
+                        description: dbPkg.description || null,
+                        count: dbPkg.name,
+                        price: price,
+                        originalPrice: originalPrice,
+                        effectivePrice: isFlashSaleActive ? flashSalePrice! : price,
+                        flashSale: {
+                            isActive: isFlashSaleActive,
+                            price: flashSalePrice,
+                            start: dbPkg.flashSaleStart,
+                            end: dbPkg.flashSaleEnd,
+                        }
+                    };
+                }
+
+                const price = typeof item.price === 'string' ? parseFloat(item.price) : (item.price || 0);
+                return {
+                    id: sku,
+                    name: item.name,
+                    description: item.description || null,
+                    count: item.name,
+                    price: price,
+                    originalPrice: price,
+                    effectivePrice: price,
+                    flashSale: {
+                        isActive: false,
+                        price: null,
+                        start: null,
+                        end: null
+                    }
+                };
+            });
+
+            return {
+                id: dbGame ? dbGame.id.toString() : (game.id || game.key || Math.random().toString()),
+                name: dbGame ? dbGame.name : game.name,
+                slug: game.key,
+                image: this.formatImageUrl(dbGame?.image || game.image || this.getGameImageUrl(game.key)),
+                category: dbGame?.category?.name || await this.getGameCategory(game.key),
+                label: dbGame ? dbGame.label : this.determineLabel(game.label || 'NONE'),
+                description: dbGame?.description || game.description || null,
+                isActive,
+                packages: transformedPackages,
+                fields: (game.inputs || []).map((input: any) => ({
+                    name: input.key || input.name,
+                    label: input.title || input.label || input.key,
+                    placeholder: input.placeholder || '',
+                    type: input.type || 'text',
+                    required: input.required !== false,
+                    options: (input.options || []).map((opt: any) => ({
+                        label: opt.label || opt.name,
+                        value: opt.value || opt.key,
+                    })),
                 })),
-            })),
-        })));
-        return { data: transformedGames.filter(g => g.name) };
+            };
+        }));
+        return { data: transformedGames.filter(g => g && g.name && g.isActive) };
     }
 
     private async getGameCategory(gameKey: string): Promise<string> {
@@ -324,14 +423,87 @@ export class GamesService {
     }
 
     async getAllCategories(): Promise<any[]> {
-        return [
-            { id: '1', name: 'Action / Shooter', slug: 'action-shooter', description: 'Action / Shooter' },
-            { id: '2', name: 'MOBA / Strategy', slug: 'moba-strategy', description: 'MOBA / Strategy' },
-            { id: '3', name: 'RPG / Open World / MMO', slug: 'rpg-open-world-mmo', description: 'RPG / Open World / MMO' },
-            { id: '4', name: 'Sports / Racing', slug: 'sports-racing', description: 'Sports / Racing' },
-            { id: '5', name: 'Social / Casual / Simulation', slug: 'social-casual-simulation', description: 'Social / Casual / Simulation' },
-            { id: '6', name: 'Other', slug: 'other', description: 'Other' },
+        // 1. Ensure the 6 official categories exist in DB
+        try {
+            await this.categoriesService.seedDefaultCategories();
+        } catch (err) {
+            console.error('Failed to seed categories automatically:', err);
+        }
+
+        // 2. Fetch all categories currently in DB
+        const allDbCategories = await this.prisma.gameCategory.findMany({
+            orderBy: { order: 'asc' },
+        });
+
+        // The official slugs
+        const officialSlugs = [
+            'action-shooter',
+            'rpg-open-world-mmo',
+            'moba-strategy',
+            'sports-racing',
+            'social-casual-simulation',
+            'other'
         ];
+
+        // Find the official category records
+        const officialCats = allDbCategories.filter(c => officialSlugs.includes(c.slug));
+        const officialMapBySlug = new Map(officialCats.map(c => [c.slug, c.id]));
+
+        // Find the old categories to clean up
+        const oldCats = allDbCategories.filter(c => !officialSlugs.includes(c.slug));
+
+        if (oldCats.length > 0) {
+            console.log(`Migrating ${oldCats.length} legacy categories...`);
+            for (const oldCat of oldCats) {
+                // Determine target official slug
+                let targetSlug = 'other';
+                const nameLower = oldCat.name.toLowerCase();
+                if (nameLower.includes('moba')) {
+                    targetSlug = 'moba-strategy';
+                } else if (nameLower.includes('rpg') || nameLower.includes('mmo') || nameLower.includes('role')) {
+                    targetSlug = 'rpg-open-world-mmo';
+                } else if (nameLower.includes('shooter') || nameLower.includes('action') || nameLower.includes('battle royale') || nameLower.includes('fps')) {
+                    targetSlug = 'action-shooter';
+                } else if (nameLower.includes('sport') || nameLower.includes('race') || nameLower.includes('racing')) {
+                    targetSlug = 'sports-racing';
+                } else if (nameLower.includes('casual') || nameLower.includes('social') || nameLower.includes('simulation')) {
+                    targetSlug = 'social-casual-simulation';
+                }
+
+                const targetId = officialMapBySlug.get(targetSlug);
+                if (targetId) {
+                    // Update games using the old category to use the target official category
+                    await this.prisma.game.updateMany({
+                        where: { categoryId: oldCat.id },
+                        data: { categoryId: targetId },
+                    });
+                }
+
+                // Delete the old category record
+                await this.prisma.gameCategory.delete({
+                    where: { id: oldCat.id },
+                });
+            }
+
+            // Fetch the clean list again
+            const cleanCategories = await this.prisma.gameCategory.findMany({
+                where: { isActive: true },
+                orderBy: { order: 'asc' },
+            });
+            return cleanCategories.map(c => ({
+                id: c.id.toString(),
+                name: c.name,
+                slug: c.slug,
+                description: c.description || '',
+            }));
+        }
+
+        return officialCats.map(c => ({
+            id: c.id.toString(),
+            name: c.name,
+            slug: c.slug,
+            description: c.description || '',
+        }));
     }
 
 

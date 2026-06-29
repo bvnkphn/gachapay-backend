@@ -146,11 +146,26 @@ export class UsersService {
     async getWalletBalance(uuid: string) {
         const user = await this.prisma.user.findUnique({
             where: { uuid },
-            select: { wallet_balance: true },
+            select: { id: true, wallet_balance: true },
         });
         if (!user) return null;
+
+        const bonusTransactionsSum = await this.prisma.transaction.aggregate({
+            where: {
+                userId: user.id,
+                type: { in: ['referral', 'gacha', 'bonus'] },
+                status: 'completed'
+            },
+            _sum: {
+                amount: true
+            }
+        });
+        const bonusAmount = Number(bonusTransactionsSum._sum.amount ?? 0);
+
         return {
             amount: user.wallet_balance,
+            depositedAmount: Math.max(0, Number(user.wallet_balance) - bonusAmount),
+            bonusAmount: bonusAmount,
             currency: 'THB',
         };
     }
@@ -166,6 +181,16 @@ export class UsersService {
             const u = await txPrisma.user.update({
                 where: { id: user.id },
                 data: { wallet_balance: { increment: amount } },
+            });
+
+            await txPrisma.transaction.create({
+                data: {
+                    userId: user.id,
+                    type: 'gacha',
+                    amount: amount,
+                    description: 'รางวัลจากการหมุนวงล้อนำโชค (Gacha Reward)',
+                    status: 'completed',
+                }
             });
 
             return u;

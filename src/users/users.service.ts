@@ -255,7 +255,7 @@ export class UsersService {
             where: { userId: user.id, status: 'completed' },
         });
         const completedTopupsCount = await this.prisma.topupTransaction.count({
-            where: { userId: user.id },
+            where: { userId: user.id, status: 'completed' },
         });
         const hasPurchased = (completedOrdersCount + completedTopupsCount) > 0;
 
@@ -302,7 +302,7 @@ export class UsersService {
             where: { userId: user.id, status: 'completed' },
         });
         const completedTopupsCount = await this.prisma.topupTransaction.count({
-            where: { userId: user.id },
+            where: { userId: user.id, status: 'completed' },
         });
         if ((completedOrdersCount + completedTopupsCount) > 0) {
             throw new BadRequestException('ไม่สามารถระบุผู้แนะนำได้หลังจากมีประวัติการทำรายการแล้ว');

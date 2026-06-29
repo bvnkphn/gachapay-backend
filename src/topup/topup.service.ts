@@ -21,6 +21,7 @@ export class TopupService {
     }
 
     async getTransactions(userId: bigint, status?: string, limit = 10, offset = 0) {
+        await this.expireStaleTransactions();
         const where: any = { userId };
         if (status) where.status = status;
 

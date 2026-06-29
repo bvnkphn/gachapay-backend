@@ -8,6 +8,14 @@ export class UsersService {
     constructor(private prisma: PrismaService) { }
 
     async create(data: Prisma.UserCreateInput) {
+        if (!data.uuid) {
+            const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let customUuid = '';
+            for (let i = 0; i < 12; i++) {
+                customUuid += characters.charAt(Math.floor(Math.random() * characters.length));
+            }
+            data.uuid = customUuid;
+        }
         return this.prisma.user.create({ data });
     }
 

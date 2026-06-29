@@ -208,7 +208,7 @@ export class OrdersController {
             }
         }
 
-        return this.ordersService.create({
+        const order = await this.ordersService.create({
             userId:           userId,
             gameId,
             externalGameSlug,
@@ -224,5 +224,13 @@ export class OrdersController {
             discountAmount,
             finalPrice,
         });
+
+        return {
+            ...order,
+            id: order.id.toString(),
+            userId: order.userId?.toString() || null,
+            gameId: order.gameId?.toString() || null,
+            packageId: order.packageId?.toString() || null,
+        };
     }
 }

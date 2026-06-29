@@ -45,6 +45,7 @@ export class PaymentController {
      * POST /api/payments/generate-qr
      */
     @Post('generate-qr')
+    @UseGuards(JwtAuthGuard)
     async generateQRCode(
         @Req() req: any,
         @Body()
@@ -58,26 +59,11 @@ export class PaymentController {
             throw new BadRequestException('Invalid payment method');
         }
 
-        let userId: bigint | undefined = undefined;
-        const authHeader = req.headers?.authorization;
-        if (authHeader && authHeader.startsWith('Bearer ')) {
-            const token = authHeader.substring(7);
-            try {
-                const parts = token.split('.');
-                if (parts.length === 3) {
-                    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
-                    if (payload && payload.id) {
-                        userId = BigInt(payload.id);
-                    }
-                }
-            } catch (e) {}
-        }
-
         return this.paymentService.generateQRCode(
             dto.orderId,
             dto.amount,
             dto.method,
-            userId,
+            req.user.id,
         );
     }
 

@@ -134,26 +134,10 @@ export class OrdersController {
     }
 
     @Post()
+    @UseGuards(JwtAuthGuard)
     async create(@Req() req: any, @Body() dto: CreateOrderDto) {
-        // Optionally decode userId from JWT token if logged in
-        let userId: bigint | null = null;
-        const authHeader = req.headers?.authorization;
-        if (authHeader && authHeader.startsWith('Bearer ')) {
-            const token = authHeader.substring(7);
-            try {
-                const parts = token.split('.');
-                if (parts.length === 3) {
-                    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
-                    if (payload && payload.id) {
-                        userId = BigInt(payload.id);
-                    }
-                }
-            } catch (e) {
-                // Ignore decoding errors
-            }
-        }
-
-        const email = dto.email || req.user?.email;
+        const userId = req.user.id;
+        const email = dto.email || req.user.email;
         if (!email) throw new BadRequestException('Email is required for order creation');
 
         let gameId: bigint | null = null;

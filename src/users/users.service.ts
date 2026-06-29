@@ -308,23 +308,35 @@ export class UsersService {
             throw new BadRequestException('ไม่สามารถระบุผู้แนะนำได้หลังจากมีประวัติการทำรายการแล้ว');
         }
 
-        const referrerIdStr = referrerCode.replace(/.*\/ref\//, "").trim();
-        let referrerId: bigint;
-        try {
-            referrerId = BigInt(referrerIdStr);
-        } catch {
-            throw new BadRequestException('รหัสผู้แนะนำไม่ถูกต้อง');
+        const cleanedCode = referrerCode.replace(/.*\/ref\//, "").trim();
+        
+        let referrer: any = null;
+        
+        // Try looking up by UUID first (since UUID is default frontend link format)
+        if (cleanedCode.length > 5 && (cleanedCode.includes('-') || isNaN(Number(cleanedCode)))) {
+            referrer = await this.prisma.user.findUnique({
+                where: { uuid: cleanedCode },
+            });
+        }
+        
+        // If not found by UUID, try to parse as bigint and find by ID
+        if (!referrer) {
+            try {
+                const referrerId = BigInt(cleanedCode);
+                referrer = await this.prisma.user.findUnique({
+                    where: { id: referrerId },
+                });
+            } catch {
+                // If not numeric and not valid UUID, then it is invalid
+            }
         }
 
-        if (referrerId === user.id) {
-            throw new BadRequestException('ไม่สามารถแนะนำตัวเองได้');
-        }
-
-        const referrer = await this.prisma.user.findUnique({
-            where: { id: referrerId },
-        });
         if (!referrer) {
             throw new NotFoundException('ไม่พบผู้แนะนำด้วยรหัสนี้');
+        }
+
+        if (referrer.id === user.id) {
+            throw new BadRequestException('ไม่สามารถแนะนำตัวเองได้');
         }
 
         await this.prisma.referral.create({

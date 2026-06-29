@@ -98,5 +98,16 @@ export class UsersController {
     async setDefaultAddress(@Req() req, @Param('id') id: string) {
         return this.usersService.setDefaultAddress(req.user.uuid, id);
     }
+
+    @Get('me/bookmarks')
+    async getBookmarks(@Req() req) {
+        return this.usersService.getBookmarks(req.user.uuid);
+    }
+
+    @Post('me/bookmarks')
+    async toggleBookmark(@Req() req, @Body('gameId') gameId: number) {
+        if (!gameId) throw new BadRequestException('Game ID is required');
+        return this.usersService.toggleBookmark(req.user.uuid, gameId);
+    }
 }
 

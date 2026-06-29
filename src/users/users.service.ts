@@ -538,4 +538,81 @@ export class UsersService {
 
         return { success: true };
     }
+
+    async getBookmarks(userUuid: string) {
+        const user = await this.prisma.user.findUnique({
+            where: { uuid: userUuid },
+            select: { id: true },
+        });
+        if (!user) throw new NotFoundException('User not found');
+
+        const bookmarks = await this.prisma.bookmark.findMany({
+            where: { userId: user.id },
+            include: {
+                game: {
+                    include: {
+                        category: true,
+                    }
+                }
+            },
+            orderBy: { createdAt: 'desc' },
+        });
+
+        return bookmarks.map((b) => {
+            const gameObj = b.game as any;
+            return {
+                ...gameObj,
+                id: gameObj.id.toString(),
+                categoryId: gameObj.categoryId?.toString() || null,
+                category: gameObj.category ? {
+                    ...gameObj.category,
+                    id: gameObj.category.id.toString(),
+                } : null,
+            };
+        });
+    }
+
+    async toggleBookmark(userUuid: string, gameId: number) {
+        const user = await this.prisma.user.findUnique({
+            where: { uuid: userUuid },
+            select: { id: true },
+        });
+        if (!user) throw new NotFoundException('User not found');
+
+        const game = await this.prisma.game.findUnique({
+            where: { id: BigInt(gameId) },
+        });
+        if (!game) throw new NotFoundException('Game not found');
+
+        const existing = await this.prisma.bookmark.findUnique({
+            where: {
+                userId_gameId: {
+                    userId: user.id,
+                    gameId: game.id,
+                },
+            },
+        });
+
+        if (existing) {
+            await this.prisma.bookmark.delete({
+                where: { id: existing.id },
+            });
+            return { bookmarked: false, message: 'ยกเลิกปักหมุดเกมสำเร็จ' };
+        } else {
+            const count = await this.prisma.bookmark.count({
+                where: { userId: user.id },
+            });
+            if (count >= 10) {
+                throw new BadRequestException('คุณสามารถปักหมุดเกมได้สูงสุด 10 เกมเท่านั้น');
+            }
+
+            await this.prisma.bookmark.create({
+                data: {
+                    userId: user.id,
+                    gameId: game.id,
+                },
+            });
+            return { bookmarked: true, message: 'ปักหมุดเกมสำเร็จ' };
+        }
+    }
 }

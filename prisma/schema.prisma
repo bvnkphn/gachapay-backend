@@ -59,6 +59,7 @@ model User {
   referralsSent     Referral[]        @relation("ReferralsSent")
   referralReceived  Referral?         @relation("ReferralReceived")
   addresses         UserAddress[]
+  bookmarks         Bookmark[]
   @@index([email])
   @@index([uuid])
   @@index([provider, providerId])
@@ -172,6 +173,7 @@ model Game {
   packages    GamePackage[]
   inputFields GameInputField[]
   orders      Order[]
+  bookmarks   Bookmark[]
   @@index([slug])
   @@index([isActive])
   @@index([categoryId])
@@ -509,5 +511,20 @@ model UserAddress {
 
   @@index([userId])
   @@map("user_addresses")
+}
+
+model Bookmark {
+  id        BigInt   @id @default(autoincrement())
+  userId    BigInt
+  gameId    BigInt
+  createdAt DateTime @default(now()) @db.Timestamp(0)
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, gameId])
+  @@index([userId])
+  @@index([gameId])
+  @@map("bookmarks")
 }
 

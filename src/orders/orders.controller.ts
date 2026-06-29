@@ -10,6 +10,7 @@ import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ExternalGameService } from '../games/external-game.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { CouponsService } from '../coupons/coupons.service';
 
 @ApiTags('Orders')
 @ApiBearerAuth()
@@ -19,6 +20,7 @@ export class OrdersController {
         private ordersService: OrdersService,
         private externalGameService: ExternalGameService,
         private prisma: PrismaService,
+        private couponsService: CouponsService,
     ) {}
 
     // ─── User endpoints ──────────────────────────────────────────────────────
@@ -133,6 +135,24 @@ export class OrdersController {
 
     @Post()
     async create(@Req() req: any, @Body() dto: CreateOrderDto) {
+        // Optionally decode userId from JWT token if logged in
+        let userId: bigint | null = null;
+        const authHeader = req.headers?.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            const token = authHeader.substring(7);
+            try {
+                const parts = token.split('.');
+                if (parts.length === 3) {
+                    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
+                    if (payload && payload.id) {
+                        userId = BigInt(payload.id);
+                    }
+                }
+            } catch (e) {
+                // Ignore decoding errors
+            }
+        }
+
         const email = dto.email || req.user?.email;
         if (!email) throw new BadRequestException('Email is required for order creation');
 
@@ -162,8 +182,34 @@ export class OrdersController {
             }
         }
 
+        // Validate coupon if provided
+        let discountAmount = 0;
+        let finalPrice = dto.packagePrice;
+        let couponCode: string | null = null;
+
+        if (dto.couponCode) {
+            try {
+                const validation = await this.couponsService.validateCoupon({
+                    code: dto.couponCode,
+                    gameId: gameId ? Number(gameId) : undefined,
+                    packageId: packageId ? Number(packageId) : undefined,
+                    amount: dto.packagePrice
+                }, userId || BigInt(1)); // fallback to 1 (default user ID) if guest
+
+                if (validation && validation.success && validation.data) {
+                    couponCode = validation.data.code;
+                    discountAmount = validation.data.discountAmount;
+                    finalPrice = validation.data.finalAmount;
+                } else {
+                    throw new BadRequestException(validation.message || 'คูปองไม่ถูกต้อง');
+                }
+            } catch (couponErr: any) {
+                throw new BadRequestException(couponErr.message || 'เกิดข้อผิดพลาดในการตรวจสอบคูปอง');
+            }
+        }
+
         return this.ordersService.create({
-            userId:           req.user?.id || null,
+            userId:           userId,
             gameId,
             externalGameSlug,
             gameName:         dto.gameName,
@@ -174,6 +220,9 @@ export class OrdersController {
             uid:              dto.uid,
             email,
             paymentMethod:    dto.paymentMethod || undefined,
+            couponCode,
+            discountAmount,
+            finalPrice,
         });
     }
 }

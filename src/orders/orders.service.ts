@@ -178,8 +178,32 @@ export class OrdersService {
             data:  { status: newStatus, updatedAt: new Date() },
         });
 
-        if (newStatus === 'completed' && order.userId) {
-            await this.prisma.processReferralReward(order.userId);
+        if (newStatus === 'completed') {
+            if (updated.couponCode) {
+                try {
+                    const coupon = await this.prisma.coupon.findUnique({ where: { code: updated.couponCode } });
+                    if (coupon) {
+                        await this.prisma.couponUsage.create({
+                            data: {
+                                couponId: coupon.id,
+                                userId: updated.userId,
+                                orderId: updated.id,
+                                usedAmount: updated.packagePrice,
+                                discountAmount: updated.discountAmount,
+                            }
+                        });
+                        await this.prisma.coupon.update({
+                            where: { id: coupon.id },
+                            data: { currentUsageCount: { increment: 1 } },
+                        });
+                    }
+                } catch (err) {
+                    console.error("Failed to apply coupon on manual admin complete:", err);
+                }
+            }
+            if (updated.userId) {
+                await this.prisma.processReferralReward(updated.userId);
+            }
         }
 
         // Audit log

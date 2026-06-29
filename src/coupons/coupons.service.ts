@@ -101,6 +101,20 @@ export class CouponsService {
                 };
             }
 
+            // Enforce first purchase only for WELCOME coupon
+            if (code.toUpperCase() === 'WELCOME') {
+                const completedOrders = await this.prisma.order.count({
+                    where: { userId, status: 'completed' }
+                });
+                if (completedOrders > 0) {
+                    return {
+                        success: false,
+                        message: 'คูปอง WELCOME ใช้ได้สำหรับการทำรายการครั้งแรกเท่านั้น',
+                        errors: ['First purchase only'],
+                    };
+                }
+            }
+
             // 6. Check applicable games (if specified)
             if (gameId && coupon.applicableGameIds.length > 0) {
                 const applicableGameIds = coupon.applicableGameIds.map(id => BigInt(id));

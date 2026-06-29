@@ -22,10 +22,33 @@ export class PaymentService {
             data: { wallet_balance: { decrement: amount } },
         });
 
-        await this.prisma.order.update({
+        const order = await this.prisma.order.update({
             where: { id: BigInt(orderId) },
             data: { status: 'completed', paymentMethod: 'gacha_wallet', updatedAt: new Date() },
         });
+
+        if (order.couponCode) {
+            try {
+                const coupon = await this.prisma.coupon.findUnique({ where: { code: order.couponCode } });
+                if (coupon) {
+                    await this.prisma.couponUsage.create({
+                        data: {
+                            couponId: coupon.id,
+                            userId: userId,
+                            orderId: order.id,
+                            usedAmount: order.packagePrice,
+                            discountAmount: order.discountAmount,
+                        }
+                    });
+                    await this.prisma.coupon.update({
+                        where: { id: coupon.id },
+                        data: { currentUsageCount: { increment: 1 } },
+                    });
+                }
+            } catch (err) {
+                console.error("Failed to apply coupon on processWalletPayment:", err);
+            }
+        }
 
         await this.prisma.processReferralReward(userId);
 
@@ -115,12 +138,36 @@ export class PaymentService {
                     const orderId = BigInt(orderIdStr);
                     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
                     if (order) {
-                        await this.prisma.order.update({
+                        const updatedOrder = await this.prisma.order.update({
                             where: { id: orderId },
                             data: { status: 'completed', paymentMethod: parts[0].toLowerCase(), updatedAt: new Date() },
                         });
-                        if (order.userId) {
-                            await this.prisma.processReferralReward(order.userId);
+
+                        if (updatedOrder.couponCode) {
+                            try {
+                                const coupon = await this.prisma.coupon.findUnique({ where: { code: updatedOrder.couponCode } });
+                                if (coupon) {
+                                    await this.prisma.couponUsage.create({
+                                        data: {
+                                            couponId: coupon.id,
+                                            userId: updatedOrder.userId,
+                                            orderId: updatedOrder.id,
+                                            usedAmount: updatedOrder.packagePrice,
+                                            discountAmount: updatedOrder.discountAmount,
+                                        }
+                                    });
+                                    await this.prisma.coupon.update({
+                                        where: { id: coupon.id },
+                                        data: { currentUsageCount: { increment: 1 } },
+                                    });
+                                }
+                            } catch (err) {
+                                console.error("Failed to apply coupon on updatePaymentStatus:", err);
+                            }
+                        }
+
+                        if (updatedOrder.userId) {
+                            await this.prisma.processReferralReward(updatedOrder.userId);
                         }
                     }
                 } catch (err) {}

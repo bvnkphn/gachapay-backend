@@ -205,7 +205,7 @@ export class GamesService {
     // Only games with verified Codashop CDN images are listed here.
     // Games NOT in this map will be hidden from the browse list but
     // remain accessible via direct slug URL for purchase.
-    private static readonly GAME_IMAGES: Record<string, string> = {
+    public static readonly GAME_IMAGES: Record<string, string> = {
         // ── Free Fire (all regions share the same tile) ──
         'free-fire':            'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/Garena_Free_Fire_178x178.jpg',
         'free-fire-i':          'https://cdn1.codashop.com/S/content/mobile/images/product-tiles/Garena_Free_Fire_178x178.jpg',

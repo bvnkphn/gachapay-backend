@@ -573,10 +573,7 @@ export class UsersService {
                 ...gameObj,
                 id: gameObj.id.toString(),
                 categoryId: gameObj.categoryId?.toString() || null,
-                category: gameObj.category ? {
-                    ...gameObj.category,
-                    id: gameObj.category.id.toString(),
-                } : null,
+                category: gameObj.category?.name || null,
             };
         });
     }

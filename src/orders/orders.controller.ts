@@ -189,6 +189,7 @@ export class OrdersController {
                 }
             } catch (couponErr: any) {
                 throw new BadRequestException(couponErr.message || 'เกิดข้อผิดพลาดในการตรวจสอบคูปอง');
+            }
         }
 
         // Calculate VAT on top of the final price (after discount)

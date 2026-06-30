@@ -225,6 +225,7 @@ export class TopupService {
                 data: userUpdateData,
             });
 
+            return updatedTx;
         });
 
         // Trigger referral reward processing

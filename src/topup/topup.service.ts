@@ -13,10 +13,33 @@ export class TopupService {
     constructor(private prisma: PrismaService) { }
 
     async getMethods() {
-        return this.prisma.paymentMethod.findMany({
+        const methods = await this.prisma.paymentMethod.findMany({
             where: { isActive: true },
             select: { id: true, code: true, name: true, icon: true, color: true },
             orderBy: { id: 'asc' },
+        });
+
+        const settingsSetting = await this.prisma.systemSetting.findUnique({
+            where: { key: 'payment_gateway_settings' },
+        });
+
+        let settings: any[] = [];
+        if (settingsSetting) {
+            try {
+                settings = JSON.parse(settingsSetting.value);
+            } catch (err) {}
+        }
+
+        return methods.map((m) => {
+            const config = settings.find((s: any) => s.id === m.code);
+            return {
+                id: m.id.toString(),
+                code: m.code,
+                name: m.name,
+                icon: m.icon,
+                color: m.color,
+                fee: config ? Number(config.fee) : 0,
+            };
         });
     }
 
@@ -107,10 +130,29 @@ export class TopupService {
             include: { method: true },
         });
         if (!tx || tx.userId !== userId) throw new NotFoundException('Transaction not found');
-        if (tx.status !== 'pending') throw new ConflictException(`Transaction is already '${tx.status}'`);
+        if (tx.status !== 'pending' && tx.status !== 'awaiting_review') {
+            throw new ConflictException(`Transaction is already '${tx.status}'`);
+        }
 
-        const isTrueMoney = tx.method?.code === 'truemoney';
-        const netAmount = isTrueMoney ? Math.round((Number(tx.amount) / 1.015) * 100) / 100 : Number(tx.amount);
+        const settingsSetting = await this.prisma.systemSetting.findUnique({
+            where: { key: 'payment_gateway_settings' },
+        });
+        const vatSetting = await this.prisma.systemSetting.findUnique({
+            where: { key: 'payment_vat_rate' },
+        });
+
+        let settings: any[] = [];
+        if (settingsSetting) {
+            try {
+                settings = JSON.parse(settingsSetting.value);
+            } catch (err) {}
+        }
+
+        const config = settings.find((s: any) => s.id === tx.method?.code);
+        const feePercent = config ? Number(config.fee) : 0;
+        const vatPercent = vatSetting ? parseFloat(vatSetting.value) || 0 : 7;
+
+        const netAmount = Number(tx.amount) / ((1 + feePercent / 100) * (1 + vatPercent / 100));
         const pointsEarned = Math.floor(netAmount); // 1 บาท = 1 point
 
         // ดึง point ปัจจุบันก่อน
@@ -130,10 +172,33 @@ export class TopupService {
                     const orderId = BigInt(orderIdStr);
                     const order = await txPrisma.order.findUnique({ where: { id: orderId } });
                     if (order) {
-                        await txPrisma.order.update({
+                        const updatedOrder = await txPrisma.order.update({
                             where: { id: orderId },
                             data: { status: 'completed', paymentMethod: parts[0].toLowerCase(), updatedAt: new Date() },
                         });
+
+                        if (updatedOrder.couponCode) {
+                            try {
+                                const coupon = await txPrisma.coupon.findUnique({ where: { code: updatedOrder.couponCode } });
+                                if (coupon) {
+                                    await txPrisma.couponUsage.create({
+                                        data: {
+                                            couponId: coupon.id,
+                                            userId: updatedOrder.userId,
+                                            orderId: updatedOrder.id,
+                                            usedAmount: updatedOrder.packagePrice,
+                                            discountAmount: updatedOrder.discountAmount,
+                                        }
+                                    });
+                                    await txPrisma.coupon.update({
+                                        where: { id: coupon.id },
+                                        data: { currentUsageCount: { increment: 1 } },
+                                    });
+                                }
+                            } catch (err) {
+                                console.error("Failed to apply coupon on simulateComplete:", err);
+                            }
+                        }
                     }
                 } catch (err) {}
             }
@@ -160,8 +225,10 @@ export class TopupService {
                 data: userUpdateData,
             });
 
-            return updatedTx;
         });
+
+        // Trigger referral reward processing
+        await this.prisma.processReferralReward(userId);
 
         return {
             reference_id: updated.referenceId,
@@ -177,7 +244,9 @@ export class TopupService {
     async simulateCancel(referenceId: string, userId: bigint) {
         const tx = await this.prisma.topupTransaction.findUnique({ where: { referenceId } });
         if (!tx || tx.userId !== userId) throw new NotFoundException('Transaction not found');
-        if (tx.status !== 'pending') throw new ConflictException(`Transaction is already '${tx.status}'`);
+        if (tx.status !== 'pending' && tx.status !== 'awaiting_review') {
+            throw new ConflictException(`Transaction is already '${tx.status}'`);
+        }
 
         const updated = await this.prisma.topupTransaction.update({
             where: { referenceId },
@@ -191,7 +260,9 @@ export class TopupService {
     async submitSlip(referenceId: string, userId: bigint, slipUrl: string, bankCode?: string) {
         const tx = await this.prisma.topupTransaction.findUnique({ where: { referenceId } });
         if (!tx || tx.userId !== userId) throw new NotFoundException('Transaction not found');
-        if (tx.status !== 'pending') throw new ConflictException(`Transaction is already '${tx.status}'`);
+        if (tx.status !== 'pending' && tx.status !== 'awaiting_review') {
+            throw new ConflictException(`Transaction is already '${tx.status}'`);
+        }
 
         const updated = await this.prisma.topupTransaction.update({
             where: { referenceId },

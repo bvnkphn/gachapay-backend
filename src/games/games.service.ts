@@ -145,7 +145,7 @@ export class GamesService {
         const formattedPackages = (game.packages || []).map((pkg: any) => {
             const price = Number(pkg.price);
             const cost = Number(pkg.cost ?? 0);
-            const originalPrice = Number(pkg.originalPrice ?? price);
+            const originalPrice = Number(pkg.originalPrice) || price;
             const flashSalePrice = pkg.flashSalePrice ? Number(pkg.flashSalePrice) : null;
             const isFlashSaleActive =
                 flashSalePrice !== null &&
@@ -302,7 +302,7 @@ export class GamesService {
 
                 if (dbPkg) {
                     const price = Number(dbPkg.price);
-                    const originalPrice = Number(dbPkg.originalPrice ?? price);
+                    const originalPrice = Number(dbPkg.originalPrice) || price;
                     const flashSalePrice = dbPkg.flashSalePrice ? Number(dbPkg.flashSalePrice) : null;
                     const isFlashSaleActive =
                         flashSalePrice !== null &&

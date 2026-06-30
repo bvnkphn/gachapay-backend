@@ -92,7 +92,7 @@ export class GameImportService {
         update: {
           name: externalPackage.name,
           price: parseFloat(externalPackage.price),
-          originalPrice: parseFloat(externalPackage.originalPrice) || 0,
+          originalPrice: parseFloat(externalPackage.price),
           isActive: true,
         },
         create: {
@@ -100,7 +100,7 @@ export class GameImportService {
           sku: externalPackage.sku,
           name: externalPackage.name,
           price: parseFloat(externalPackage.price),
-          originalPrice: parseFloat(externalPackage.originalPrice) || 0,
+          originalPrice: parseFloat(externalPackage.price),
           isActive: true,
         },
       });

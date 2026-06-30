@@ -189,8 +189,15 @@ export class OrdersController {
                 }
             } catch (couponErr: any) {
                 throw new BadRequestException(couponErr.message || 'เกิดข้อผิดพลาดในการตรวจสอบคูปอง');
-            }
         }
+
+        // Calculate VAT on top of the final price (after discount)
+        const vatSetting = await this.prisma.systemSetting.findUnique({
+            where: { key: 'payment_vat_rate' },
+        });
+        const vatRate = vatSetting ? parseFloat(vatSetting.value) ?? 7.0 : 7.0;
+        const vatAmountVal = finalPrice * (vatRate / 100);
+        finalPrice = Math.round((finalPrice + vatAmountVal) * 100) / 100;
 
         const order = await this.ordersService.create({
             userId:           userId,

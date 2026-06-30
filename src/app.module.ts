@@ -20,6 +20,7 @@ import { SystemModule } from './system/system.module';
 import { SupportModule } from './support/support.module';
 import { FaqModule } from './faq/faq.module';
 import { ReportsModule } from './reports/reports.module';
+import { ApiCreditModule } from './api-credit/api-credit.module';
 import { MaintenanceMiddleware } from './system/maintenance.middleware';
 
 @Module({
@@ -47,6 +48,7 @@ import { MaintenanceMiddleware } from './system/maintenance.middleware';
     SupportModule,
     FaqModule,
     ReportsModule,
+    ApiCreditModule,
   ],
 })
 export class AppModule implements NestModule {

@@ -142,7 +142,7 @@ export class PackagesService {
     private formatPackage(pkg: any, now: Date) {
         const price         = Number(pkg.price);
         const cost          = Number(pkg.cost ?? 0);
-        const originalPrice = Number(pkg.originalPrice ?? price);
+        const originalPrice = Number(pkg.originalPrice) || price;
         const flashSalePrice = pkg.flashSalePrice ? Number(pkg.flashSalePrice) : null;
 
         // คำนวณว่า flash sale active ตอนนี้ไหม

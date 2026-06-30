@@ -178,6 +178,18 @@ export class OrdersService {
             data:  { status: newStatus, updatedAt: new Date() },
         });
 
+        if (newStatus === 'refunded') {
+            if (updated.userId) {
+                const refundAmount = Number(updated.finalPrice ?? updated.packagePrice);
+                if (refundAmount > 0) {
+                    await this.prisma.user.update({
+                        where: { id: updated.userId },
+                        data: { wallet_balance: { increment: refundAmount } },
+                    });
+                }
+            }
+        }
+
         if (newStatus === 'completed') {
             if (updated.couponCode) {
                 try {

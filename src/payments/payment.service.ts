@@ -85,13 +85,29 @@ export class PaymentService {
                 id: `LOG-${t.id}`,
                 time: timeStr,
                 method: t.method?.name || t.method?.code || "Unknown",
+                methodCode: t.method?.code || "unknown",
                 type: t.orderId ? "charge.complete" : "wallet.deposit",
                 orderId: t.orderId ? `ORD-${t.orderId}` : "-",
                 amount: Number(t.amount),
                 status: t.status === "completed" ? "success" : t.status === "failed" ? "failed" : "pending",
+                transactionStatus: t.status,
                 latency: t.status === "failed" ? "timeout" : latency,
+                slipUrl: this.makeAbsoluteUrl(t.slipUrl),
+                bankCode: t.bankCode || null,
+                referenceId: t.referenceId,
+                adminNote: t.adminNote || null,
+                userEmail: t.user?.email || null,
+                createdAt: t.createdAt,
+                completedAt: t.completedAt,
             };
         });
+    }
+
+    private makeAbsoluteUrl(url: string | null) {
+        if (!url) return null;
+        if (url.startsWith('http://') || url.startsWith('https://')) return url;
+        const base = process.env.BACKEND_URL?.replace(/\/$/, '') || 'http://localhost:3001';
+        return `${base}${url.startsWith('/') ? '' : '/'}${url}`;
     }
 
     async getAdminSettings() {

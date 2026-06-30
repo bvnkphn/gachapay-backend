@@ -3,6 +3,7 @@ import {
     UseGuards, ParseIntPipe, DefaultValuePipe,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AdminGuard } from '../auth/guards/admin.guard';
 import { TopupService } from './topup.service';
 import { CreateTopupDto } from './dto/create-topup.dto';
 
@@ -49,5 +50,26 @@ export class TopupController {
         @Body() body: { slipUrl: string; bankCode?: string },
     ) {
         return this.topupService.submitSlip(referenceId, req.user.id, body.slipUrl, body.bankCode);
+    }
+
+    @Patch(':referenceId/admin-status')
+    @UseGuards(JwtAuthGuard, AdminGuard)
+    adminUpdateStatus(
+        @Param('referenceId') referenceId: string,
+        @Body() body: { status: 'completed' | 'failed'; adminNote?: string },
+    ) {
+        return this.topupService.adminUpdateStatus(referenceId, body.status, body.adminNote);
+    }
+
+    @Get('admin/transactions')
+    @UseGuards(JwtAuthGuard, AdminGuard)
+    getTransactionsForAdmin(
+        @Query('status') status?: string,
+        @Query('methodCode') methodCode?: string,
+        @Query('bankCode') bankCode?: string,
+        @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit?: number,
+        @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset?: number,
+    ) {
+        return this.topupService.getTransactionsForAdmin(status, methodCode, bankCode, limit, offset);
     }
 }

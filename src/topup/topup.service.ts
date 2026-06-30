@@ -150,7 +150,7 @@ export class TopupService {
 
         const config = settings.find((s: any) => s.id === tx.method?.code);
         const feePercent = config ? Number(config.fee) : 0;
-        const vatPercent = vatSetting ? parseFloat(vatSetting.value) || 0 : 7;
+        const vatPercent = 0; // Top-up transactions are VAT-exempt (no VAT deduction when buying coins)
 
         const netAmount = Number(tx.amount) / ((1 + feePercent / 100) * (1 + vatPercent / 100));
         const pointsEarned = Math.floor(netAmount); // 1 บาท = 1 point

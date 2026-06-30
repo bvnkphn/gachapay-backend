@@ -11,12 +11,36 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AdminGuard } from '../auth/guards/admin.guard';
 import { PaymentService } from './payment.service';
 
 @ApiTags('Payments')
 @Controller('payments')
 export class PaymentController {
     constructor(private paymentService: PaymentService) { }
+
+    @Get('admin/settings')
+    @UseGuards(JwtAuthGuard, AdminGuard)
+    async getAdminSettings() {
+        return this.paymentService.getAdminSettings();
+    }
+
+    @Post('admin/settings')
+    @UseGuards(JwtAuthGuard, AdminGuard)
+    async saveAdminSettings(@Body() body: { settings: any }) {
+        return this.paymentService.saveAdminSettings(body.settings);
+    }
+
+    @Get('admin/logs')
+    @UseGuards(JwtAuthGuard, AdminGuard)
+    async getAdminLogs() {
+        return this.paymentService.getAdminLogs();
+    }
+
+    @Get('active-methods')
+    async getActiveMethods() {
+        return this.paymentService.getActiveMethods();
+    }
 
     /**
      * Process Gacha Wallet Payment
@@ -52,10 +76,10 @@ export class PaymentController {
         dto: {
             orderId: number;
             amount: number;
-            method: 'promptpay' | 'truemoney';
+            method: 'promptpay' | 'truemoney' | 'bank_transfer';
         },
     ) {
-        if (!['promptpay', 'truemoney'].includes(dto.method)) {
+        if (!['promptpay', 'truemoney', 'bank_transfer'].includes(dto.method)) {
             throw new BadRequestException('Invalid payment method');
         }
 

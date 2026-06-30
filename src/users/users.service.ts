@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { GamesService } from '../games/games.service';
 
 @Injectable()
 export class UsersService {
@@ -569,11 +570,36 @@ export class UsersService {
 
         return bookmarks.map((b) => {
             const gameObj = b.game as any;
+            let rawImage = gameObj.image;
+            if (!rawImage) {
+                const slug = gameObj.slug || '';
+                const images = GamesService.GAME_IMAGES || {};
+                if (images[slug]) {
+                    rawImage = images[slug];
+                } else {
+                    const partialMatch = Object.keys(images).find(k => slug.includes(k) || k.includes(slug));
+                    if (partialMatch) {
+                        rawImage = images[partialMatch];
+                    }
+                }
+            }
+
+            let formattedImage = '';
+            if (rawImage) {
+                if (rawImage.startsWith('http') || rawImage.startsWith('data:')) {
+                    formattedImage = rawImage;
+                } else {
+                    const base = process.env.BACKEND_URL || 'http://localhost:3001';
+                    formattedImage = `${base.replace(/\/$/, '')}${rawImage}`;
+                }
+            }
+
             return {
                 ...gameObj,
                 id: gameObj.id.toString(),
                 categoryId: gameObj.categoryId?.toString() || null,
                 category: gameObj.category?.name || null,
+                image: formattedImage,
             };
         });
     }

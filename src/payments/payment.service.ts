@@ -1,9 +1,213 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
+const DEFAULT_GATEWAY_SETTINGS = [
+  {
+    id: "promptpay",
+    name: "QR",
+    nameEn: "QR",
+    icon: "⚡",
+    enabled: true,
+    fee: 0,
+    webhookUrl: "https://api.gachapay.in.th/webhook/promptpay",
+    publicKey: "pkey_live_5xKZ2mN8qW3rT1uY",
+    secretKey: "skey_live_••••••••••••••••",
+    color: "#38bdf8",
+    accent: "rgba(56,189,248,0.15)",
+  },
+  {
+    id: "truemoney",
+    name: "TrueWallet",
+    nameEn: "TrueWallet",
+    icon: "💰",
+    enabled: true,
+    fee: 1.5,
+    webhookUrl: "https://api.gachapay.in.th/webhook/truemoney",
+    publicKey: "TM_PUB_9kLp4vXn2mQs",
+    secretKey: "TM_SEC_••••••••••••••••",
+    color: "#f59e0b",
+    accent: "rgba(245,158,11,0.15)",
+  },
+  {
+    id: "bank_transfer",
+    name: "BankTransfer",
+    nameEn: "BankTransfer",
+    icon: "🏦",
+    enabled: true,
+    fee: 0,
+    webhookUrl: "https://api.gachapay.in.th/webhook/bank",
+    publicKey: "BT_PUB_8mKq3sNj6tWn",
+    secretKey: "BT_SEC_••••••••••••••••",
+    color: "#a78bfa",
+    accent: "rgba(167,139,250,0.15)",
+  },
+  {
+    id: "wallet",
+    name: "Coin",
+    nameEn: "Coin",
+    icon: "🎮",
+    enabled: true,
+    fee: 0,
+    webhookUrl: "https://api.gachapay.in.th/webhook/wallet",
+    publicKey: "CW_PUB_7rBq1tNk5sVm",
+    secretKey: "CW_SEC_••••••••••••••••",
+    color: "#34d399",
+    accent: "rgba(52,211,153,0.15)",
+  },
+];
+
 @Injectable()
 export class PaymentService {
     constructor(private prisma: PrismaService) {}
+
+    async getAdminLogs() {
+        const transactions = await this.prisma.topupTransaction.findMany({
+            orderBy: { createdAt: 'desc' },
+            take: 50,
+            include: {
+                method: { select: { code: true, name: true } },
+                user: { select: { email: true } },
+            },
+        });
+        
+        return transactions.map(t => {
+            let latency = "120ms";
+            if (t.status === 'failed') latency = "3012ms";
+            else if (t.status === 'pending') latency = "95ms";
+            
+            // Format time nicely e.g. "08 มี.ค. 68 · 14:32:01"
+            const date = new Date(t.createdAt);
+            const months = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+            const thaiYear = (date.getFullYear() + 543) % 100;
+            const timeStr = `${String(date.getDate()).padStart(2, '0')} ${months[date.getMonth()]} ${thaiYear} · ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
+
+            return {
+                id: `LOG-${t.id}`,
+                time: timeStr,
+                method: t.method?.name || t.method?.code || "Unknown",
+                type: t.orderId ? "charge.complete" : "wallet.deposit",
+                orderId: t.orderId ? `ORD-${t.orderId}` : "-",
+                amount: Number(t.amount),
+                status: t.status === "completed" ? "success" : t.status === "failed" ? "failed" : "pending",
+                latency: t.status === "failed" ? "timeout" : latency,
+            };
+        });
+    }
+
+    async getAdminSettings() {
+        const setting = await this.prisma.systemSetting.findUnique({
+            where: { key: 'payment_gateway_settings' },
+        });
+        if (!setting) {
+            return DEFAULT_GATEWAY_SETTINGS;
+        }
+        try {
+            const parsed = JSON.parse(setting.value);
+            const migrated = parsed.map((m: any) => {
+                if (m.id === 'credit' || m.id === 'bank_transfer') {
+                    return {
+                        id: "bank_transfer",
+                        name: "BankTransfer",
+                        nameEn: "BankTransfer",
+                        icon: "🏦",
+                        enabled: m.enabled ?? true,
+                        fee: m.fee ?? 0,
+                        webhookUrl: "https://api.gachapay.in.th/webhook/bank",
+                        publicKey: m.publicKey || "BT_PUB_8mKq3sNj6tWn",
+                        secretKey: m.secretKey || "BT_SEC_••••••••••••••••",
+                        color: "#a78bfa",
+                        accent: "rgba(167,139,250,0.15)",
+                    };
+                }
+                if (m.id === 'wallet') {
+                    return {
+                        ...m,
+                        name: "Coin",
+                        nameEn: "Coin",
+                        icon: "🎮",
+                    };
+                }
+                if (m.id === 'promptpay') {
+                    return {
+                        ...m,
+                        name: "QR",
+                        nameEn: "QR",
+                        icon: "⚡",
+                    };
+                }
+                if (m.id === 'truemoney') {
+                    return {
+                        ...m,
+                        name: "TrueWallet",
+                        nameEn: "TrueWallet",
+                        icon: "💰",
+                    };
+                }
+                return m;
+            });
+            
+            // Ensure bank_transfer exists in the array if it was missing completely
+            if (!migrated.find((m: any) => m.id === 'bank_transfer')) {
+                migrated.push({
+                    id: "bank_transfer",
+                    name: "BankTransfer",
+                    nameEn: "BankTransfer",
+                    icon: "🏦",
+                    enabled: true,
+                    fee: 0,
+                    webhookUrl: "https://api.gachapay.in.th/webhook/bank",
+                    publicKey: "BT_PUB_8mKq3sNj6tWn",
+                    secretKey: "BT_SEC_••••••••••••••••",
+                    color: "#a78bfa",
+                    accent: "rgba(167,139,250,0.15)",
+                });
+            }
+            
+            return migrated;
+        } catch {
+            return DEFAULT_GATEWAY_SETTINGS;
+        }
+    }
+
+    async saveAdminSettings(settings: any) {
+        if (!Array.isArray(settings)) {
+            throw new BadRequestException('Invalid settings structure');
+        }
+        await this.prisma.systemSetting.upsert({
+            where: { key: 'payment_gateway_settings' },
+            update: { value: JSON.stringify(settings) },
+            create: { key: 'payment_gateway_settings', value: JSON.stringify(settings) },
+        });
+
+        // Sync with paymentMethod records in db
+        for (const m of settings) {
+            try {
+                await this.prisma.paymentMethod.update({
+                    where: { code: m.id },
+                    data: { isActive: m.enabled },
+                });
+            } catch (err) {
+                // Ignore key mismatch errors
+            }
+        }
+
+        return { success: true, message: 'Settings saved successfully' };
+    }
+
+    async getActiveMethods() {
+        const settings = await this.getAdminSettings();
+        // Return all methods (enabled & disabled) but strip sensitive fields
+        return settings.map((m: any) => ({
+            id: m.id,
+            name: m.name,
+            nameEn: m.nameEn,
+            icon: m.icon,
+            enabled: m.enabled,
+            fee: m.fee,
+            color: m.color,
+            accent: m.accent,
+        }));
+    }
 
     async processWalletPayment(orderId: number, userId: bigint, amount: number) {
         const user = await this.prisma.user.findUnique({
@@ -59,7 +263,7 @@ export class PaymentService {
         return { success: true, message: 'Payment processed successfully', data: { orderId, status: 'completed' } };
     }
 
-    async generateQRCode(orderId: number, amount: number, method: 'promptpay' | 'truemoney', requesterUserId?: bigint) {
+    async generateQRCode(orderId: number, amount: number, method: 'promptpay' | 'truemoney' | 'bank_transfer', requesterUserId?: bigint) {
         const referenceNumber = `${method.toUpperCase()}_${orderId}_${Date.now()}`;
         const mockQRCode = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${referenceNumber}`;
 
@@ -73,11 +277,18 @@ export class PaymentService {
         // to the order's userId or null.
         const userId = requesterUserId ?? order?.userId ?? null;
 
+        // Dynamically lookup the payment method by its code from the database
+        const paymentMethodRecord = await this.prisma.paymentMethod.findUnique({
+            where: { code: method },
+            select: { id: true },
+        });
+        const methodId = paymentMethodRecord ? paymentMethodRecord.id : (method === 'promptpay' ? BigInt(2) : method === 'truemoney' ? BigInt(3) : BigInt(1));
+
         await this.prisma.topupTransaction.create({
             data: {
                 userId: userId ?? BigInt(1),
                 orderId: BigInt(orderId),
-                methodId: method === 'promptpay' ? BigInt(2) : BigInt(3),
+                methodId: methodId,
                 amount,
                 status: 'pending',
                 referenceId: referenceNumber,

@@ -28,6 +28,16 @@ export class OrdersService {
     constructor(private prisma: PrismaService) {}
 
     async create(data: Prisma.OrderUncheckedCreateInput) {
+        // If finalPrice is 0 (or less), mark status as completed and method as free
+        if (data.finalPrice !== undefined) {
+            const priceVal = typeof data.finalPrice === 'object' && data.finalPrice !== null && 'toNumber' in data.finalPrice
+                ? (data.finalPrice as any).toNumber()
+                : Number(data.finalPrice);
+            if (priceVal <= 0) {
+                data.status = 'completed';
+                data.paymentMethod = 'free';
+            }
+        }
         return this.prisma.order.create({ data });
     }
 

@@ -94,37 +94,20 @@ export class PaymentService {
                 id: `LOG-${t.id}`,
                 time: timeStr,
                 method: t.method?.name || t.method?.code || "Unknown",
-<<<<<<< HEAD
                 methodCode: t.method?.code || "unknown",
-=======
-                methodCode: t.method?.code,
-                slipUrl: t.slipUrl,
->>>>>>> 61e07985b23447fc5b2cef1da1254fb5cdea0e5b
                 type: t.orderId ? "charge.complete" : "wallet.deposit",
                 orderId: t.orderId ? `ORD-${t.orderId}` : "-",
                 amount: Number(t.amount),
                 status: t.status === "completed" ? "success" : t.status === "failed" ? "failed" : "pending",
                 transactionStatus: t.status,
                 latency: t.status === "failed" ? "timeout" : latency,
-<<<<<<< HEAD
-                slipUrl: this.makeAbsoluteUrl(t.slipUrl),
-                bankCode: t.bankCode || null,
-                referenceId: t.referenceId,
-                adminNote: t.adminNote || null,
-                userEmail: t.user?.email || null,
-                createdAt: t.createdAt,
-                completedAt: t.completedAt,
-=======
-                
-                // Real data fields for SelectedTopup modal:
+                slip_url: this.makeAbsoluteUrl(t.slipUrl),
+                bank_code: t.bankCode || null,
                 reference_id: t.referenceId,
-                bank_code: t.bankCode || "-",
-                transactionStatus: t.status,
-                userEmail: t.user?.email || "-",
+                admin_note: t.adminNote || null,
+                userEmail: t.user?.email || null,
                 created_at: t.createdAt.toISOString(),
                 completed_at: t.completedAt ? t.completedAt.toISOString() : null,
-                admin_note: t.adminNote || "",
->>>>>>> 61e07985b23447fc5b2cef1da1254fb5cdea0e5b
             };
         });
     }

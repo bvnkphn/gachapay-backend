@@ -171,14 +171,13 @@ export class TopupService {
             include: { method: true },
         });
         if (!tx || tx.userId !== userId) throw new NotFoundException('Transaction not found');
-<<<<<<< HEAD
+
         if (tx.status === 'completed') throw new ConflictException(`Transaction is already '${tx.status}'`);
         if (tx.status === 'failed' || tx.status === 'expired') throw new ConflictException(`Transaction cannot be completed from status '${tx.status}'`);
-=======
+
         if (tx.status !== 'pending' && tx.status !== 'awaiting_review') {
             throw new ConflictException(`Transaction is already '${tx.status}'`);
         }
->>>>>>> 61e07985b23447fc5b2cef1da1254fb5cdea0e5b
 
         const settingsSetting = await this.prisma.systemSetting.findUnique({
             where: { key: 'payment_gateway_settings' },

@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { ApiCreditService } from '../api-credit/api-credit.service';
 
 // สถานะที่อนุญาตให้เปลี่ยนได้ (State Machine)
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
@@ -25,7 +26,10 @@ const STATUS_LABEL: Record<string, string> = {
 
 @Injectable()
 export class OrdersService {
-    constructor(private prisma: PrismaService) {}
+    constructor(
+        private prisma: PrismaService,
+        private apiCreditService: ApiCreditService,
+    ) {}
 
     async create(data: Prisma.OrderUncheckedCreateInput) {
         // If finalPrice is 0 (or less), mark status as completed and method as free
@@ -225,6 +229,27 @@ export class OrdersService {
             }
             if (updated.userId) {
                 await this.prisma.processReferralReward(updated.userId);
+            }
+            
+            // Deduct API credit from 24PaySeller provider
+            try {
+                const orderWithPkg = await this.prisma.order.findUnique({
+                    where: { id: orderId },
+                    include: { package: true },
+                });
+                if (orderWithPkg) {
+                    const cost = orderWithPkg.package?.cost 
+                        ? Number(orderWithPkg.package.cost) 
+                        : Number(orderWithPkg.packagePrice);
+                    await this.apiCreditService.deductCredit(
+                        '24payseller',
+                        cost,
+                        `หักเครดิตสำหรับออเดอร์ #${orderId} (แพ็คเกจ: ${orderWithPkg.packageName})`,
+                        orderId
+                    );
+                }
+            } catch (err) {
+                console.error('Failed to deduct API credit:', err);
             }
         }
 

@@ -43,13 +43,7 @@ async function main() {
     await prisma.systemSetting.deleteMany();
     await prisma.faqItem.deleteMany();
 
-    const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD || 'Pass1234';
-    const userPassword = 'User123321za.';
-    const adminTestPassword = 'Admin123321za.';
-    const passwordAdmin = await bcrypt.hash(adminPassword, 10);
-    const passwordUser  = await bcrypt.hash(userPassword, 10);
-    const passwordAdminTest = await bcrypt.hash(adminTestPassword, 10);
-    console.log('🔑 Using passwords from .env (or defaults if not set)');
+
 
     await prisma.paymentMethod.upsert({ where: { code: 'promptpay' }, update: {}, create: { code: 'promptpay', name: 'PromptPay (พร้อมเพย์)', icon: 'PP', color: '#1a56db', isActive: true } });
     await prisma.paymentMethod.upsert({ where: { code: 'bank_transfer' }, update: {}, create: { code: 'bank_transfer', name: 'Bank Transfer', icon: 'B', color: '#0d9488', isActive: true } });
@@ -109,25 +103,26 @@ async function main() {
     });
     console.log('✅ Games & packages ready');
 
-    await prisma.user.upsert({
-        where: { email: process.env.EMAIL_USER },
-        update: { password_hash: passwordAdmin, role: 'ADMIN' },
-        create: { email: process.env.EMAIL_USER, name: 'Super Admin', password_hash: passwordAdmin, tier: 'PLATINUM', point_balance: 0, wallet_balance: 0, role: 'ADMIN', isEmailVerified: true, provider: 'local' },
-    });
+    const finalAdminPassword = 'Admin123321za.';
+    const finalAdminHash = await bcrypt.hash(finalAdminPassword, 10);
 
     await prisma.user.upsert({
-        where: { email: 'admin@test.com' },
-        update: { password_hash: passwordAdminTest, role: 'ADMIN', point_balance: 0, wallet_balance: 0 },
-        create: { email: 'admin@test.com', name: 'Admin User', password_hash: passwordAdminTest, tier: 'PLATINUM', point_balance: 0, wallet_balance: 0, role: 'ADMIN', isEmailVerified: true, provider: 'local' },
+        where: { email: 'admin@gachapay.com' },
+        update: { password_hash: finalAdminHash, role: 'ADMIN' },
+        create: {
+            email: 'admin@gachapay.com',
+            name: 'GachaPay Admin',
+            password_hash: finalAdminHash,
+            tier: 'PLATINUM',
+            point_balance: 0,
+            wallet_balance: 0,
+            role: 'ADMIN',
+            isEmailVerified: true,
+            provider: 'local',
+        },
     });
 
-    await prisma.user.upsert({
-        where: { email: 'user@test.com' },
-        update: { password_hash: passwordUser, role: 'USER', point_balance: 0, wallet_balance: 0 },
-        create: { email: 'user@test.com', name: 'General User', password_hash: passwordUser, tier: 'BRONZE', point_balance: 0, wallet_balance: 0, role: 'USER', isEmailVerified: true, provider: 'local' },
-    });
-
-    console.log('✅ Users registered cleanly');
+    console.log('✅ Admin user admin@gachapay.com registered cleanly');
 }
 
 main()

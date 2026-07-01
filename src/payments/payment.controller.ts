@@ -126,4 +126,21 @@ export class PaymentController {
             BigInt(dto.userId),
         );
     }
+
+    @Get('vat')
+    async getPublicVatRate() {
+        return this.paymentService.getVatRate();
+    }
+
+    @Get('admin/vat')
+    @UseGuards(JwtAuthGuard, AdminGuard)
+    async getVatRate() {
+        return this.paymentService.getVatRate();
+    }
+
+    @Post('admin/vat')
+    @UseGuards(JwtAuthGuard, AdminGuard)
+    async saveVatRate(@Body() body: { vatRate: number }) {
+        return this.paymentService.saveVatRate(body.vatRate);
+    }
 }

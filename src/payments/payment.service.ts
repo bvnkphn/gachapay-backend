@@ -12,6 +12,8 @@ const DEFAULT_GATEWAY_SETTINGS = [
     webhookUrl: "https://api.gachapay.in.th/webhook/promptpay",
     publicKey: "pkey_live_5xKZ2mN8qW3rT1uY",
     secretKey: "skey_live_••••••••••••••••",
+    apiEndpointSources: "https://api.omise.co/sources",
+    apiEndpointCharges: "https://api.omise.co/charges",
     color: "#38bdf8",
     accent: "rgba(56,189,248,0.15)",
   },
@@ -25,6 +27,8 @@ const DEFAULT_GATEWAY_SETTINGS = [
     webhookUrl: "https://api.gachapay.in.th/webhook/truemoney",
     publicKey: "TM_PUB_9kLp4vXn2mQs",
     secretKey: "TM_SEC_••••••••••••••••",
+    apiEndpointSources: "https://api.omise.co/sources",
+    apiEndpointCharges: "https://api.omise.co/charges",
     color: "#f59e0b",
     accent: "rgba(245,158,11,0.15)",
   },
@@ -56,9 +60,14 @@ const DEFAULT_GATEWAY_SETTINGS = [
   },
 ];
 
+import { ApiCreditService } from '../api-credit/api-credit.service';
+
 @Injectable()
 export class PaymentService {
-    constructor(private prisma: PrismaService) {}
+    constructor(
+        private prisma: PrismaService,
+        private apiCreditService: ApiCreditService,
+    ) {}
 
     async getAdminLogs() {
         const transactions = await this.prisma.topupTransaction.findMany({
@@ -85,13 +94,19 @@ export class PaymentService {
                 id: `LOG-${t.id}`,
                 time: timeStr,
                 method: t.method?.name || t.method?.code || "Unknown",
+<<<<<<< HEAD
                 methodCode: t.method?.code || "unknown",
+=======
+                methodCode: t.method?.code,
+                slipUrl: t.slipUrl,
+>>>>>>> 61e07985b23447fc5b2cef1da1254fb5cdea0e5b
                 type: t.orderId ? "charge.complete" : "wallet.deposit",
                 orderId: t.orderId ? `ORD-${t.orderId}` : "-",
                 amount: Number(t.amount),
                 status: t.status === "completed" ? "success" : t.status === "failed" ? "failed" : "pending",
                 transactionStatus: t.status,
                 latency: t.status === "failed" ? "timeout" : latency,
+<<<<<<< HEAD
                 slipUrl: this.makeAbsoluteUrl(t.slipUrl),
                 bankCode: t.bankCode || null,
                 referenceId: t.referenceId,
@@ -99,6 +114,17 @@ export class PaymentService {
                 userEmail: t.user?.email || null,
                 createdAt: t.createdAt,
                 completedAt: t.completedAt,
+=======
+                
+                // Real data fields for SelectedTopup modal:
+                reference_id: t.referenceId,
+                bank_code: t.bankCode || "-",
+                transactionStatus: t.status,
+                userEmail: t.user?.email || "-",
+                created_at: t.createdAt.toISOString(),
+                completed_at: t.completedAt ? t.completedAt.toISOString() : null,
+                admin_note: t.adminNote || "",
+>>>>>>> 61e07985b23447fc5b2cef1da1254fb5cdea0e5b
             };
         });
     }
@@ -149,6 +175,8 @@ export class PaymentService {
                         name: "QR",
                         nameEn: "QR",
                         icon: "⚡",
+                        apiEndpointSources: m.apiEndpointSources || "https://api.omise.co/sources",
+                        apiEndpointCharges: m.apiEndpointCharges || "https://api.omise.co/charges",
                     };
                 }
                 if (m.id === 'truemoney') {
@@ -157,6 +185,8 @@ export class PaymentService {
                         name: "TrueWallet",
                         nameEn: "TrueWallet",
                         icon: "💰",
+                        apiEndpointSources: m.apiEndpointSources || "https://api.omise.co/sources",
+                        apiEndpointCharges: m.apiEndpointCharges || "https://api.omise.co/charges",
                     };
                 }
                 return m;
@@ -247,6 +277,27 @@ export class PaymentService {
             data: { status: 'completed', paymentMethod: 'gacha_wallet', updatedAt: new Date() },
         });
 
+        // Deduct API credit from 24PaySeller provider
+        try {
+            const orderWithPkg = await this.prisma.order.findUnique({
+                where: { id: BigInt(orderId) },
+                include: { package: true },
+            });
+            if (orderWithPkg) {
+                const cost = orderWithPkg.package?.cost 
+                    ? Number(orderWithPkg.package.cost) 
+                    : Number(orderWithPkg.packagePrice);
+                await this.apiCreditService.deductCredit(
+                    '24payseller',
+                    cost,
+                    `หักเครดิตสำหรับออเดอร์ #${orderId} (แพ็คเกจ: ${orderWithPkg.packageName})`,
+                    BigInt(orderId)
+                );
+            }
+        } catch (err) {
+            console.error('Failed to deduct API credit on processWalletPayment:', err);
+        }
+
         if (order.couponCode) {
             try {
                 const coupon = await this.prisma.coupon.findUnique({ where: { code: order.couponCode } });
@@ -281,7 +332,62 @@ export class PaymentService {
 
     async generateQRCode(orderId: number, amount: number, method: 'promptpay' | 'truemoney' | 'bank_transfer', requesterUserId?: bigint) {
         const referenceNumber = `${method.toUpperCase()}_${orderId}_${Date.now()}`;
-        const mockQRCode = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${referenceNumber}`;
+        let qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${referenceNumber}`;
+        let gatewayChargeId = null;
+
+        // Load Connectivity settings to check if real keys are supplied
+        const settings = await this.getAdminSettings();
+        const config = settings.find((s: any) => s.id === (method === 'promptpay' ? 'promptpay' : method === 'truemoney' ? 'truemoney' : 'bank_transfer'));
+
+        if (config && config.secretKey && (config.secretKey.startsWith('skey_') || config.secretKey.startsWith('sec_'))) {
+            try {
+                // If it is a real Omise key, call real Omise endpoints
+                const authHeader = 'Basic ' + Buffer.from(config.secretKey + ':').toString('base64');
+                const sourcesUrl = config.apiEndpointSources || "https://api.omise.co/sources";
+                const chargesUrl = config.apiEndpointCharges || "https://api.omise.co/charges";
+
+                const sourceRes = await fetch(sourcesUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': authHeader,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        type: method === 'promptpay' ? 'promptpay' : 'truemoney',
+                        amount: Math.round(amount * 100),
+                        currency: 'THB',
+                    }),
+                });
+                const source = await sourceRes.json();
+                
+                if (source.id) {
+                    const chargeRes = await fetch(chargesUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': authHeader,
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            amount: Math.round(amount * 100),
+                            currency: 'THB',
+                            source: source.id,
+                            return_uri: config.webhookUrl || 'https://api.gachapay.in.th/webhook/callback',
+                        }),
+                    });
+                    const charge = await chargeRes.json();
+                    if (charge.id) {
+                        gatewayChargeId = charge.id;
+                        if (charge.source?.scannable_code?.image?.download_uri) {
+                            qrCodeUrl = charge.source.scannable_code.image.download_uri;
+                        } else if (charge.authorize_uri) {
+                            qrCodeUrl = charge.authorize_uri;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Payment Gateway API call failed, falling back to simulator:', err);
+            }
+        }
 
         // Fetch order to get the actual userId if available
         const order = await this.prisma.order.findUnique({
@@ -309,13 +415,15 @@ export class PaymentService {
                 status: 'pending',
                 referenceId: referenceNumber,
                 expiresAt: new Date(Date.now() + 3 * 60 * 1000),
+                paymentUrl: qrCodeUrl,
+                adminNote: gatewayChargeId ? `Omise Charge ID: ${gatewayChargeId}` : 'Simulated Gateway',
             },
         });
 
         return {
             success: true,
-            message: 'QR code generated successfully',
-            data: { qrCode: mockQRCode, referenceNumber, expiresAt: new Date(Date.now() + 3 * 60 * 1000), method },
+            message: gatewayChargeId ? 'QR code generated via Omise' : 'QR code generated successfully',
+            data: { qrCode: qrCodeUrl, referenceNumber, expiresAt: new Date(Date.now() + 3 * 60 * 1000), method },
         };
     }
 
@@ -396,6 +504,27 @@ export class PaymentService {
                         if (updatedOrder.userId) {
                             await this.prisma.processReferralReward(updatedOrder.userId);
                         }
+
+                        // Deduct API credit from 24PaySeller provider
+                        try {
+                            const orderWithPkg = await this.prisma.order.findUnique({
+                                where: { id: orderId },
+                                include: { package: true },
+                            });
+                            if (orderWithPkg) {
+                                const cost = orderWithPkg.package?.cost 
+                                    ? Number(orderWithPkg.package.cost) 
+                                    : Number(orderWithPkg.packagePrice);
+                                await this.apiCreditService.deductCredit(
+                                    '24payseller',
+                                    cost,
+                                    `หักเครดิตสำหรับออเดอร์ #${orderId} (แพ็คเกจ: ${orderWithPkg.packageName})`,
+                                    orderId
+                                );
+                            }
+                        } catch (err) {
+                            console.error('Failed to deduct API credit on updatePaymentStatus:', err);
+                        }
                     }
                 } catch (err) {}
             }
@@ -417,5 +546,43 @@ export class PaymentService {
             message: 'Wallet balance retrieved',
             data: { balance: user.wallet_balance, currency: 'THB' },
         };
+    }
+
+    async getVatRate() {
+        const setting = await this.prisma.systemSetting.findUnique({
+            where: { key: 'payment_vat_rate' },
+        });
+        if (!setting) {
+            return { vatRate: 7.0 };
+        }
+        return { vatRate: parseFloat(setting.value) ?? 7.0 };
+    }
+
+    async saveVatRate(vatRate: number) {
+        await this.prisma.systemSetting.upsert({
+            where: { key: 'payment_vat_rate' },
+            update: { value: vatRate.toString() },
+            create: { key: 'payment_vat_rate', value: vatRate.toString() },
+        });
+        return { success: true, message: 'VAT rate saved successfully' };
+    }
+
+    async handleOmiseWebhook(chargeId: string, status: 'completed' | 'failed' | 'pending', amountInThb: number) {
+        const tx = await this.prisma.topupTransaction.findFirst({
+            where: {
+                adminNote: `Omise Charge ID: ${chargeId}`
+            }
+        });
+        if (!tx) {
+            return { success: false, message: 'Transaction not found for charge ID' };
+        }
+        
+        if (status === 'completed') {
+            await this.updatePaymentStatus(tx.referenceId, 'completed', amountInThb, tx.userId);
+        } else if (status === 'failed') {
+            await this.updatePaymentStatus(tx.referenceId, 'failed', amountInThb, tx.userId);
+        }
+        
+        return { success: true, referenceId: tx.referenceId };
     }
 }

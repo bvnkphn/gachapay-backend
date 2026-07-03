@@ -485,8 +485,18 @@ export class OrdersService {
             ? Math.round((completedOrders.length / allOrders.length) * 1000) / 10
             : 0;
 
+        const totalRevenue = completedOrders.reduce((s, o) => s + Number(o.finalPrice ?? o.packagePrice), 0);
+        const totalCost = completedOrders.reduce((s, o) => s + Number(o.packagePrice ?? 0), 0);
+        const totalProfit = totalRevenue - totalCost;
+        const profitPercent = totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 1000) / 10 : 0;
+
         return {
             stats: {
+                revenue: totalRevenue,
+                orderCount: allOrders.length,
+                completedCount: completedOrders.length,
+                profit: totalProfit,
+                profitPercent,
                 todayRevenue,
                 todayOrders: todayOrders.length,
                 newMembersToday: todayUsers,

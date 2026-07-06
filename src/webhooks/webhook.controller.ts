@@ -112,4 +112,42 @@ export class WebhookController {
             timestamp: Date.now(),
         });
     }
+
+    /**
+     * Cyberpay webhook handler
+     * POST /webhooks/cyberpay
+     */
+    @Post('cyberpay')
+    async handleCyberpayWebhook(@Body() payload: any) {
+        console.log('Cyberpay Webhook Payload:', payload);
+
+        const referenceId = payload.ref_1 || payload.ref1 || payload.referenceId;
+        const amount = payload.amount ? Number(payload.amount) : undefined;
+        const transactionId = payload.transaction_id || payload.transactionId;
+
+        if (!referenceId) {
+            throw new BadRequestException('Missing referenceId (ref_1)');
+        }
+
+        const tx = await this.paymentService.findTransactionByRef(referenceId);
+        if (!tx) {
+            throw new BadRequestException('Transaction not found');
+        }
+
+        const status = 'completed'; // Webhook from gateway is usually only sent upon success
+        await this.paymentService.updatePaymentStatus(
+            referenceId,
+            status,
+            amount || Number(tx.amount),
+            tx.userId
+        );
+
+        return {
+            status: true,
+            message: 'success',
+            data: {
+                transaction_id: transactionId || 'unknown'
+            }
+        };
+    }
 }

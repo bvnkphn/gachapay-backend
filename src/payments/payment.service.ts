@@ -317,48 +317,78 @@ export class PaymentService {
         const settings = await this.getAdminSettings();
         const config = settings.find((s: any) => s.id === (method === 'promptpay' ? 'promptpay' : method === 'truemoney' ? 'truemoney' : 'bank_transfer'));
 
-        if (config && config.secretKey && (config.secretKey.startsWith('skey_') || config.secretKey.startsWith('sec_'))) {
+        if (config && config.secretKey && (config.secretKey.startsWith('skey_') || config.secretKey.startsWith('sec_') || config.apiEndpointSources?.includes('cyberpay') || config.secretKey.includes('cyberpay') || config.publicKey?.startsWith('CPT'))) {
             try {
-                // If it is a real Omise key, call real Omise endpoints
-                const authHeader = 'Basic ' + Buffer.from(config.secretKey + ':').toString('base64');
-                const sourcesUrl = config.apiEndpointSources || "https://api.omise.co/sources";
-                const chargesUrl = config.apiEndpointCharges || "https://api.omise.co/charges";
+                if (config.apiEndpointSources?.includes('cyberpay')) {
+                    // Call Cyberpay API
+                    const partnerId = config.publicKey;
+                    const secretKey = config.secretKey;
+                    const endpoint = config.apiEndpointSources; // e.g. https://gateway.cyberpay.tech/api/third-party/payment
 
-                const sourceRes = await fetch(sourcesUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': authHeader,
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        type: method === 'promptpay' ? 'promptpay' : 'truemoney',
-                        amount: Math.round(amount * 100),
-                        currency: 'THB',
-                    }),
-                });
-                const source = await sourceRes.json();
-                
-                if (source.id) {
-                    const chargeRes = await fetch(chargesUrl, {
+                    const paymentRes = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'PartnerId': partnerId,
+                            'SecretKey': secretKey,
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            payment_channel_id: 'P002', // PromptPay channel
+                            ref_1: referenceNumber,
+                            amount: amount,
+                        }),
+                    });
+
+                    const paymentResult = await paymentRes.json();
+
+                    if (paymentResult.status && paymentResult.data?.qr_image) {
+                        qrCodeUrl = `data:image/png;base64,${paymentResult.data.qr_image}`;
+                        gatewayChargeId = paymentResult.data.ref_2 || 'cyberpay_charge';
+                    } else {
+                        console.error('Cyberpay API error response:', paymentResult);
+                    }
+                } else {
+                    // If it is a real Omise key, call real Omise endpoints
+                    const authHeader = 'Basic ' + Buffer.from(config.secretKey + ':').toString('base64');
+                    const sourcesUrl = config.apiEndpointSources || "https://api.omise.co/sources";
+                    const chargesUrl = config.apiEndpointCharges || "https://api.omise.co/charges";
+
+                    const sourceRes = await fetch(sourcesUrl, {
                         method: 'POST',
                         headers: {
                             'Authorization': authHeader,
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify({
+                            type: method === 'promptpay' ? 'promptpay' : 'truemoney',
                             amount: Math.round(amount * 100),
                             currency: 'THB',
-                            source: source.id,
-                            return_uri: config.webhookUrl || 'https://api.gachapay.in.th/webhook/callback',
                         }),
                     });
-                    const charge = await chargeRes.json();
-                    if (charge.id) {
-                        gatewayChargeId = charge.id;
-                        if (charge.source?.scannable_code?.image?.download_uri) {
-                            qrCodeUrl = charge.source.scannable_code.image.download_uri;
-                        } else if (charge.authorize_uri) {
-                            qrCodeUrl = charge.authorize_uri;
+                    const source = await sourceRes.json();
+                    
+                    if (source.id) {
+                        const chargeRes = await fetch(chargesUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': authHeader,
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                amount: Math.round(amount * 100),
+                                currency: 'THB',
+                                source: source.id,
+                                return_uri: config.webhookUrl || 'https://api.gachapay.in.th/webhook/callback',
+                            }),
+                        });
+                        const charge = await chargeRes.json();
+                        if (charge.id) {
+                            gatewayChargeId = charge.id;
+                            if (charge.source?.scannable_code?.image?.download_uri) {
+                                qrCodeUrl = charge.source.scannable_code.image.download_uri;
+                            } else if (charge.authorize_uri) {
+                                qrCodeUrl = charge.authorize_uri;
+                            }
                         }
                     }
                 }
@@ -384,6 +414,8 @@ export class PaymentService {
         });
         const methodId = paymentMethodRecord ? paymentMethodRecord.id : (method === 'promptpay' ? BigInt(2) : method === 'truemoney' ? BigInt(3) : BigInt(1));
 
+        const isCyberpay = config && config.apiEndpointSources?.includes('cyberpay');
+
         await this.prisma.topupTransaction.create({
             data: {
                 userId: userId ?? BigInt(1),
@@ -394,13 +426,17 @@ export class PaymentService {
                 referenceId: referenceNumber,
                 expiresAt: new Date(Date.now() + 3 * 60 * 1000),
                 paymentUrl: qrCodeUrl,
-                adminNote: gatewayChargeId ? `Omise Charge ID: ${gatewayChargeId}` : 'Simulated Gateway',
+                adminNote: gatewayChargeId 
+                    ? (isCyberpay ? `Cyberpay Ref: ${gatewayChargeId}` : `Omise Charge ID: ${gatewayChargeId}`)
+                    : 'Simulated Gateway',
             },
         });
 
         return {
             success: true,
-            message: gatewayChargeId ? 'QR code generated via Omise' : 'QR code generated successfully',
+            message: gatewayChargeId 
+                ? (isCyberpay ? 'QR code generated via Cyberpay' : 'QR code generated via Omise')
+                : 'QR code generated successfully',
             data: { qrCode: qrCodeUrl, referenceNumber, expiresAt: new Date(Date.now() + 3 * 60 * 1000), method },
         };
     }
@@ -562,5 +598,11 @@ export class PaymentService {
         }
         
         return { success: true, referenceId: tx.referenceId };
+    }
+
+    async findTransactionByRef(referenceId: string) {
+        return this.prisma.topupTransaction.findUnique({
+            where: { referenceId }
+        });
     }
 }

@@ -10,7 +10,8 @@ sonarcloud-check:
     paths:
       - .sonar/cache
   script:
-    - sonar-scanner
+    # - sonar-scanner
+    - sonar-scanner -Dsonar.branch.name=$CI_COMMIT_REF_NAME
   only:
     - merge_requests
     - main

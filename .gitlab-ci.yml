@@ -30,15 +30,13 @@ sonarcloud-check:
   script:
     - >
       if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then
-        sonar-scanner 
-        -Dsonar.pullrequest.key=$CI_MERGE_REQUEST_IID 
-        -Dsonar.pullrequest.branch=$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME 
-        -Dsonar.pullrequest.base=$CI_MERGE_REQUEST_TARGET_BRANCH_NAME
+        sonar-scanner \
+          -Dsonar.pullrequest.key=$CI_MERGE_REQUEST_IID \
+          -Dsonar.pullrequest.branch=$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME \
+          -Dsonar.pullrequest.base=$CI_MERGE_REQUEST_TARGET_BRANCH_NAME
       else
         sonar-scanner -Dsonar.branch.name=$CI_COMMIT_REF_NAME
       fi
   rules:
-    # 1. ถ้ามี Merge Request เกิดขึ้น ให้รันที่นี่ที่เดียว (ข้ามเงื่อนไขอื่น)
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    # 2. ถ้าเป็นการ Push เข้า main หรือ develop ปกติ ให้รัน
     - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'

@@ -1,0 +1,103 @@
+[
+  {
+    "name": "Ace Racer",
+    "key": "ace-racer",
+    "items": [
+      {
+        "name": "60 + 5 Tokens",
+        "sku": "T8XLlOEaSLWN-ytz",
+        "price": "27.5",
+        "originalPrice": "0"
+      },
+      {
+        "name": "250 + 20 Tokens",
+        "sku": "qiRbH_U__jaolvYw",
+        "price": "105.62",
+        "originalPrice": "0"
+      }
+    ],
+    "inputs": [
+      {
+        "key": "uid",
+        "title": "UID",
+        "regex": null,
+        "type": "text",
+        "placeholder": "UID",
+        "options": []
+      },
+      {
+        "key": "server",
+        "title": "Server",
+        "regex": null,
+        "type": "select",
+        "placeholder": "Server",
+        "options": [
+          {
+            "label": "韓國分站/KOREA/한국",
+            "value": "韓國分站/KOREA/한국/サブ会場-韓国"
+          },
+          {
+            "label": "日本分站/JAPAN/일본",
+            "value": "日本分站/JAPAN/일본-구역/サブ会場-日本"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Aether Gazer",
+    "key": "aether-gazer",
+    "items": [
+      {
+        "name": "60 Shifting Flowers",
+        "sku": "sB5iI_Qg-NE_A_PZ",
+        "price": "28.76",
+        "originalPrice": "0"
+      },
+      {
+        "name": "1990 Shifting Flowers",
+        "sku": "Tn5c9xD9-Z3Exobd",
+        "price": "890.56",
+        "originalPrice": "0"
+      }
+    ],
+    "inputs": [
+      {
+        "key": "uid",
+        "title": "UID",
+        "regex": null,
+        "type": "text",
+        "placeholder": "UID",
+        "options": []
+      }
+    ]
+  },
+  {
+    "name": "AFK Journey",
+    "key": "afk-journey",
+    "items": [
+      {
+        "name": "21 Dragon Crystals (20 + 1 Bonus)",
+        "sku": "a532mOVayciaevFN",
+        "price": "29.64",
+        "originalPrice": "0"
+      },
+      {
+        "name": "126 Dragon Crystals (120 + 6 Bonus)",
+        "sku": "fqdBFodLqPKqvL2w",
+        "price": "144.24",
+        "originalPrice": "0"
+      }
+    ],
+    "inputs": [
+      {
+        "key": "uid",
+        "title": "UID",
+        "regex": "^[0-9]{3,8}$",
+        "type": "text",
+        "placeholder": "UID",
+        "options": []
+      }
+    ]
+  }
+]

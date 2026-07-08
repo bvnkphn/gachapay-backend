@@ -91,7 +91,7 @@ export class AuthService {
             throw new UnauthorizedException('Invalid credentials');
         }
 
-        if (user.role === 'ADMIN') {
+        if (user.role === 'ADMIN' && this.configService.get('NODE_ENV') === 'production') {
             const otp = randomInt(100000, 1000000).toString();
             const otpHash = await bcrypt.hash(otp, 10);
             const expiresAt = new Date(Date.now() + 600000);

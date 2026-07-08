@@ -16,8 +16,10 @@ services:
   postgres-db:
     image: postgres:18-alpine
     container_name: postgres-db
-    env_file:
-      - .env
+    environment:
+      - POSTGRES_USER=gachapay
+      - POSTGRES_PASSWORD=gachapay1234
+      - POSTGRES_DB=game_topup_db
     ports:
       - 5432:5432
     volumes:

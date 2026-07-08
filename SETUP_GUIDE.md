@@ -67,7 +67,12 @@ cp .env.example .env
 
 แก้ไขไฟล์ `.env`:
 ```env
-DATABASE_URL="postgresql://postgres:yourpassword@localhost:5432/game_topup_db"
+# Database Connection (PostgreSQL)
+DATABASE_URL="postgresql://gachapay:gachapay1234@localhost:5432/game_topup_db?schema=public"
+
+# สำหรับการเชื่อมต่อตรง (ต้องใส่ค่าเดียวกับ DATABASE_URL ในเครื่อง Local)
+DIRECT_URL="postgresql://gachapay:gachapay1234@localhost:5432/game_topup_db?schema=public"
+
 JWT_SECRET="your-super-secret-jwt-key-change-this-to-random-string"
 JWT_EXPIRES_IN="7d"
 
@@ -87,7 +92,7 @@ EMAIL_PORT=587
 EMAIL_SECURE=false
 EMAIL_USER="your-email@gmail.com"
 EMAIL_PASSWORD="your-app-password"
-EMAIL_FROM="Game Top-up <noreply@gametopup.com>"
+EMAIL_FROM="GachaPay <noreply@gachapay.com>"
 
 FRONTEND_URL="http://localhost:3000"
 PORT=3001

@@ -5,6 +5,11 @@ import { AppModule } from './app.module';
 
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
+// Fallback DIRECT_URL to DATABASE_URL if missing at runtime
+if (!process.env.DIRECT_URL && process.env.DATABASE_URL) {
+    process.env.DIRECT_URL = process.env.DATABASE_URL;
+}
+
 // Fix BigInt serialization
 Object.defineProperty(BigInt.prototype, 'toJSON', {
     value: function (this: bigint) {

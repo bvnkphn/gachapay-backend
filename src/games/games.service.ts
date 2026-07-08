@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CategoriesService } from '../categories/categories.service';
 import { ExternalGameService } from './external-game.service';
@@ -18,9 +19,9 @@ const GAME_INCLUDE = {
 @Injectable()
 export class GamesService {
     constructor(
-        private prisma: PrismaService,
-        private categoriesService: CategoriesService,
-        private externalGameService: ExternalGameService,
+        private readonly prisma: PrismaService,
+        private readonly categoriesService: CategoriesService,
+        private readonly externalGameService: ExternalGameService,
     ) {}
 
     // สำหรับ user ทั่วไป — เฉพาะที่ isActive: true
@@ -114,7 +115,7 @@ export class GamesService {
                 packages: (game.items || []).map((item: any) => ({
                     id: item.sku,
                     name: item.name,
-                    price: parseFloat(item.price) || 0,
+                    price: Number.parseFloat(item.price) || 0,
                 })),
                 fields: (game.inputs || []).map((input: any) => ({
                     name: input.key,
@@ -328,7 +329,7 @@ export class GamesService {
                     };
                 }
 
-                const price = typeof item.price === 'string' ? parseFloat(item.price) : (item.price || 0);
+                const price = typeof item.price === 'string' ? Number.parseFloat(item.price) : (item.price || 0);
                 return {
                     id: sku,
                     name: item.name,
@@ -347,7 +348,7 @@ export class GamesService {
             });
 
             return {
-                id: dbGame ? dbGame.id.toString() : (game.id || game.key || Math.random().toString()),
+                id: dbGame ? dbGame.id.toString() : (game.id || game.key || randomBytes(4).toString('hex')),
                 name: dbGame ? dbGame.name : game.name,
                 slug: game.key,
                 image: this.formatImageUrl(dbGame?.image || game.image || this.getGameImageUrl(game.key)),

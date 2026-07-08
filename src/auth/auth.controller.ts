@@ -9,7 +9,7 @@ import { DevOrGoogleAuthGuard, DevOrFacebookAuthGuard } from './guards/dev-oauth
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-    constructor(private authService: AuthService) { }
+    constructor(private readonly authService: AuthService) { }
 
     @Post('register')
     async register(@Body() registerDto: RegisterDto) {
@@ -61,7 +61,7 @@ export class AuthController {
     @Get('google/callback')
     @UseGuards(DevOrGoogleAuthGuard)
     async googleAuthCallback(@Req() req, @Res() res: Response) {
-        const { user, token } = await this.authService.googleLogin(req.user);
+        const { token } = await this.authService.googleLogin(req.user);
 
         // Redirect to frontend with token
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
@@ -79,7 +79,7 @@ export class AuthController {
     @Get('facebook/callback')
     @UseGuards(DevOrFacebookAuthGuard)
     async facebookAuthCallback(@Req() req, @Res() res: Response) {
-        const { user, token } = await this.authService.facebookLogin(req.user);
+        const { token } = await this.authService.facebookLogin(req.user);
 
         // Redirect to frontend with token
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';

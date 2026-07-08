@@ -21,7 +21,7 @@ function serialize(obj: any): any {
 
 @Injectable()
 export class SupportService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   // ── Generate ticketNo ─────────────────────────────────────────
   private async generateTicketNo(): Promise<string> {
@@ -29,7 +29,7 @@ export class SupportService {
       orderBy: { id: 'desc' }, select: { ticketNo: true },
     });
     if (!last) return 'TK-0001';
-    const num = parseInt(last.ticketNo.replace('TK-', ''), 10) + 1;
+    const num = Number.parseInt(last.ticketNo.replace('TK-', ''), 10) + 1;
     return `TK-${String(num).padStart(4, '0')}`;
   }
 
@@ -65,7 +65,7 @@ export class SupportService {
         { email:    { contains: search, mode: 'insensitive' } },
         { name:     { contains: search, mode: 'insensitive' } },
         // ค้นหาจาก order id
-        ...(isNaN(Number(search)) ? [] : [{ orderId: BigInt(search) }]),
+        ...(Number.isNaN(Number(search)) ? [] : [{ orderId: BigInt(search) }]),
       ];
     }
 

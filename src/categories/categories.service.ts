@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class CategoriesService {
-    constructor(private prisma: PrismaService) {}
+    constructor(private readonly prisma: PrismaService) {}
 
     // Get all categories
     async findAll() {

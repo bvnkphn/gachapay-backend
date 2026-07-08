@@ -6,9 +6,13 @@ import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 // Fix BigInt serialization
-BigInt.prototype['toJSON'] = function () {
-    return this.toString();
-};
+Object.defineProperty(BigInt.prototype, 'toJSON', {
+    value: function (this: bigint) {
+        return this.toString();
+    },
+    configurable: true,
+    writable: true,
+});
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);

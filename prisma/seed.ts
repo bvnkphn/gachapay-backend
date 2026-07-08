@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { randomInt } from 'crypto';
 require('dotenv').config();
 
 const prisma = new PrismaClient();
@@ -11,7 +12,7 @@ function hoursAgo(n: number) {
     const d = new Date(); d.setHours(d.getHours() - n); return d;
 }
 function randomBetween(min: number, max: number) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
+    return randomInt(min, max + 1);
 }
 
 async function main() {

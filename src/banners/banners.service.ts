@@ -4,7 +4,7 @@ import { CreateBannerDto, UpdateBannerDto } from './dto';
 
 @Injectable()
 export class BannersService {
-    constructor(private prisma: PrismaService) {}
+    constructor(private readonly prisma: PrismaService) {}
 
     /**
      * Create a new banner

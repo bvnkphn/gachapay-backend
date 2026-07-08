@@ -9,7 +9,7 @@ interface DateRange { from: Date; to: Date }
 
 @Injectable()
 export class ReportsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   // ── คำนวณ date range จาก period ────────────────────────────────
   private getDateRange(period: Period, dateFrom?: string, dateTo?: string): DateRange {
@@ -26,7 +26,8 @@ export class ReportsService {
         const from = new Date(); from.setDate(from.getDate() - 6); from.setHours(0, 0, 0, 0);
         return { from, to };
       }
-      case 'month': {
+      case 'month':
+      default: {
         const from = new Date(); from.setDate(1); from.setHours(0, 0, 0, 0);
         return { from, to };
       }
@@ -37,10 +38,6 @@ export class ReportsService {
       case 'custom': {
         const from = dateFrom ? new Date(dateFrom) : new Date(now.getFullYear(), now.getMonth(), 1);
         from.setHours(0, 0, 0, 0);
-        return { from, to };
-      }
-      default: {
-        const from = new Date(); from.setDate(1); from.setHours(0, 0, 0, 0);
         return { from, to };
       }
     }
@@ -184,9 +181,9 @@ export class ReportsService {
           email:         o.email,
           revenue,
           cost,
-          vat:           parseFloat(vat.toFixed(2)),
-          revenueExVat:  parseFloat((revenue - vat).toFixed(2)),
-          profit:        parseFloat(((revenue - vat) - cost).toFixed(2)),
+          vat:           Number.parseFloat(vat.toFixed(2)),
+          revenueExVat:  Number.parseFloat((revenue - vat).toFixed(2)),
+          profit:        Number.parseFloat(((revenue - vat) - cost).toFixed(2)),
           status:        o.status,
           paymentMethod: o.paymentMethod ?? '-',
           discount:      Number(o.discountAmount),
@@ -210,9 +207,9 @@ export class ReportsService {
     const rows = orders.map(o => {
       const revenue = Number(o.finalPrice ?? o.packagePrice);
       const cost    = Number(o.package?.cost ?? 0);
-      const vat     = parseFloat((revenue * VAT_RATE).toFixed(2));
-      const exVat   = parseFloat((revenue - vat).toFixed(2));
-      const profit  = parseFloat((exVat - cost).toFixed(2));
+      const vat     = Number.parseFloat((revenue * VAT_RATE).toFixed(2));
+      const exVat   = Number.parseFloat((revenue - vat).toFixed(2));
+      const profit  = Number.parseFloat((exVat - cost).toFixed(2));
       return {
         'Order ID':       `ORD-${o.id}`,
         'วันที่':         o.createdAt.toLocaleDateString('th-TH'),
@@ -263,14 +260,18 @@ export class ReportsService {
 
     if (rows.length === 0) return wb.xlsx.writeBuffer();
 
+    const getHeaderWidth = (header: string): number => {
+      if (header.includes('ID') || header.includes('UID')) return 18;
+      if (header.includes('เกม') || header.includes('แพ็กเกจ')) return 22;
+      if (header.includes('อีเมล')) return 28;
+      return 15;
+    };
+
     // Header style
     const headers = Object.keys(rows[0]);
     ws.columns = headers.map(h => ({
       header: h, key: h,
-      width: h.includes('ID') || h.includes('UID') ? 18
-           : h.includes('เกม') || h.includes('แพ็กเกจ') ? 22
-           : h.includes('อีเมล') ? 28
-           : 15,
+      width: getHeaderWidth(h),
     }));
 
     // Style header row
@@ -307,9 +308,14 @@ export class ReportsService {
       // สีสถานะ
       const statusCell = r.getCell('สถานะ');
       const status     = String(row['สถานะ']);
+      const getStatusColor = (s: string): string => {
+        if (s === 'completed') return 'FF34d399';
+        if (s === 'failed') return 'FFf87171';
+        return 'FFfbbf24';
+      };
       statusCell.font  = {
         bold: true,
-        color: { argb: status === 'completed' ? 'FF34d399' : status === 'failed' ? 'FFf87171' : 'FFfbbf24' },
+        color: { argb: getStatusColor(status) },
       };
     });
 

@@ -9,7 +9,7 @@ import { CreateTopupDto } from './dto/create-topup.dto';
 @Controller('topup')
 @UseGuards(JwtAuthGuard)
 export class TopupController {
-    constructor(private topupService: TopupService) { }
+    constructor(private readonly topupService: TopupService) { }
 
     @Get('methods')
     getMethods() {

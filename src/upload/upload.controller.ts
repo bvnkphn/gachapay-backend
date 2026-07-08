@@ -2,11 +2,12 @@ import {
     Controller, Post, UseInterceptors,
     UploadedFile, BadRequestException, UseGuards,
 } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
-import { extname, join } from 'path';
-import { existsSync, mkdirSync } from 'fs';
+import { extname, join } from 'node:path';
+import { existsSync, mkdirSync } from 'node:fs';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
 
@@ -37,7 +38,7 @@ export class UploadController {
                 cb(null, uploadDir);
             },
             filename: (_req, file, cb) => {
-                const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+                const unique = Date.now() + '-' + randomBytes(4).toString('hex');
                 cb(null, `game-${unique}${extname(file.originalname)}`);
             },
         }),
@@ -79,7 +80,7 @@ export class UploadController {
                 cb(null, slipUploadDir);
             },
             filename: (_req, file, cb) => {
-                const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+                const unique = Date.now() + '-' + randomBytes(4).toString('hex');
                 cb(null, `slip-${unique}${extname(file.originalname)}`);
             },
         }),

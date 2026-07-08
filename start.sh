@@ -6,10 +6,10 @@ until pg_isready -h postgres-db -p 5432 -U postgres; do
 done
 
 echo "Pulling latest database schema..."
-npx prisma db pull
+npx --no-install prisma db pull
 
 echo "Generating Prisma client..."
-npx prisma generate
+npx --no-install prisma generate
 
 echo "Starting the application..."
 # exec node dist/main.js

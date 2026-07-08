@@ -6,15 +6,16 @@ import { UsersService } from '../users/users.service';
 import { EmailService } from './email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto, LoginDto, ForgotPasswordDto, ResetPasswordDto, SendOtpDto, VerifyOtpDto } from './dto';
+import { randomBytes, randomInt } from 'crypto';
 
 @Injectable()
 export class AuthService {
     constructor(
-        private usersService: UsersService,
-        private jwtService: JwtService,
-        private emailService: EmailService,
-        private configService: ConfigService,
-        private prisma: PrismaService,
+        private readonly usersService: UsersService,
+        private readonly jwtService: JwtService,
+        private readonly emailService: EmailService,
+        private readonly configService: ConfigService,
+        private readonly prisma: PrismaService,
     ) { }
 
     // บันทึก Audit Log
@@ -52,7 +53,7 @@ export class AuthService {
                 const referrer = await this.prisma.user.findUnique({
                     where: { id: referrerId },
                 });
-                if (referrer && referrer.id !== user.id) {
+                if (referrer?.id !== user.id) {
                     await this.prisma.referral.create({
                         data: {
                             referrerId: referrer.id,
@@ -91,7 +92,7 @@ export class AuthService {
         }
 
         if (user.role === 'ADMIN') {
-            const otp = Math.floor(100000 + Math.random() * 900000).toString();
+            const otp = randomInt(100000, 1000000).toString();
             const otpHash = await bcrypt.hash(otp, 10);
             const expiresAt = new Date(Date.now() + 600000);
 
@@ -213,7 +214,7 @@ export class AuthService {
         }
 
         // Generate 6-digit OTP
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otp = randomInt(100000, 1000000).toString();
         const otpHash = await bcrypt.hash(otp, 10);
         const expiresAt = new Date(Date.now() + 600000); // 10 minutes
 
@@ -285,7 +286,7 @@ export class AuthService {
     }
 
     async googleLogin(profile: any) {
-        const { id, emails, displayName, photos } = profile;
+        const { id, emails, displayName } = profile;
         const email = emails[0].value;
 
         let user = await this.usersService.findByProvider('google', id);
@@ -319,7 +320,7 @@ export class AuthService {
     }
 
     async facebookLogin(profile: any) {
-        const { id, displayName, photos } = profile;
+        const { id, displayName } = profile;
         const email = profile.emails?.[0]?.value || `facebook_${id}@placeholder.com`;
 
         let user = await this.usersService.findByProvider('facebook', id);
@@ -357,8 +358,7 @@ export class AuthService {
     }
 
     private generateResetToken(): string {
-        return Math.random().toString(36).substring(2, 15) +
-            Math.random().toString(36).substring(2, 15);
+        return randomBytes(16).toString('hex');
     }
 
     sanitizeUser(user: any) {

@@ -17,10 +17,10 @@ import { CouponsService } from '../coupons/coupons.service';
 @Controller('orders')
 export class OrdersController {
     constructor(
-        private ordersService: OrdersService,
-        private externalGameService: ExternalGameService,
-        private prisma: PrismaService,
-        private couponsService: CouponsService,
+        private readonly ordersService: OrdersService,
+        private readonly externalGameService: ExternalGameService,
+        private readonly prisma: PrismaService,
+        private readonly couponsService: CouponsService,
     ) {}
 
     // ─── User endpoints ──────────────────────────────────────────────────────
@@ -50,8 +50,8 @@ export class OrdersController {
         @Query('gameId') gameId?: string,
     ) {
         return this.ordersService.findAllForAdmin({
-            page:  parseInt(page, 10),
-            limit: parseInt(limit, 10),
+            page:  Number.parseInt(page, 10),
+            limit: Number.parseInt(limit, 10),
             status, search, gameId,
         });
     }
@@ -151,7 +151,7 @@ export class OrdersController {
         let packageId: bigint | null = null;
         let externalPackageSku: string | null = null;
         if (typeof dto.packageId === 'string') {
-            packageId = null;
+            // redundant assignment removed
         } else if (typeof dto.packageId === 'number' || typeof dto.packageId === 'bigint') {
             const packageIdBig = BigInt(dto.packageId);
             const packageExists = await this.prisma.gamePackage.findUnique({
@@ -162,7 +162,7 @@ export class OrdersController {
                 packageId = packageIdBig;
             } else {
                 externalPackageSku = `${dto.packageName}_${dto.packageId}`.toLowerCase().replace(/\s+/g, '_');
-                packageId = null;
+                // redundant assignment removed
             }
         }
 

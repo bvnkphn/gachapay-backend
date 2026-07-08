@@ -33,8 +33,8 @@ interface ExternalGame {
 @Controller('games')
 export class GameImportController {
   constructor(
-    private gameImportService: GameImportService,
-    private externalGameService: ExternalGameService,
+    private readonly gameImportService: GameImportService,
+    private readonly externalGameService: ExternalGameService,
   ) {}
 
   /**

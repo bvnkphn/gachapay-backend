@@ -3,6 +3,7 @@ import {
     NotFoundException,
     ConflictException,
 } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTopupDto } from './dto/create-topup.dto';
 
@@ -291,7 +292,7 @@ export class TopupService {
 
     private generateReferenceId(): string {
         const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        const rand = Math.random().toString(36).substring(2, 7).toUpperCase();
+        const rand = randomBytes(3).toString('hex').substring(0, 5).toUpperCase();
         return `TP-${date}-${rand}`;
     }
 }

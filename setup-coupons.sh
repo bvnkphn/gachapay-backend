@@ -7,22 +7,22 @@ echo "🚀 Coupon Validation API - เริ่มต้นอย่างรว
 echo "================================================="
 
 # ตรวจสอบว่าอยู่ในไดเรกทอรี่ที่ถูกต้อง
-if [ ! -f "package.json" ]; then
+if [[ ! -f "package.json" ]]; then
     echo "❌ โปรดเรียกใช้สคริปต์นี้จากไดเรกทอรี่ gachapay-member-api"
     exit 1
 fi
 
 echo ""
 echo "📦 ขั้นตอนที่ 1: ติดตั้งโมดูล..."
-npm install
+npm install --ignore-scripts
 
 echo ""
 echo "🗄️  ขั้นตอนที่ 2: เรียกใช้ migration ฐานข้อมูล..."
-npx prisma migrate dev --name add_coupon_models
+npx --no-install prisma migrate dev --name add_coupon_models
 
 echo ""
 echo "🌱 ขั้นตอนที่ 3: ปลูกข้อมูลคูปองตัวอย่าง..."
-npx prisma db seed || echo "⚠️  ข้ามการปลูก (กำหนดค่า prisma seed ใน package.json หากจำเป็น)"
+npx --no-install prisma db seed || echo "⚠️  ข้ามการปลูก (กำหนดค่า prisma seed ใน package.json หากจำเป็น)"
 
 echo ""
 echo "✅ เสร็จสิ้นการตั้งค่า!"

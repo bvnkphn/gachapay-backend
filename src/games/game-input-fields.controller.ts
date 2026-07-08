@@ -9,7 +9,7 @@ import { AdminGuard } from '../auth/guards/admin.guard';
 @UseGuards(JwtAuthGuard, AdminGuard)
 @Controller('games')
 export class GameInputFieldsController {
-    constructor(private fieldService: GameInputFieldsService) {}
+    constructor(private readonly fieldService: GameInputFieldsService) {}
 
     // Get all input fields for a game by ID
     @Get(':gameId/input-fields')

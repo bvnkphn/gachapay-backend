@@ -317,9 +317,36 @@ export class PaymentService {
         const settings = await this.getAdminSettings();
         const config = settings.find((s: any) => s.id === (method === 'promptpay' ? 'promptpay' : method === 'truemoney' ? 'truemoney' : 'bank_transfer'));
 
-        if (config && config.secretKey && (config.secretKey.startsWith('skey_') || config.secretKey.startsWith('sec_') || config.apiEndpointSources?.includes('cyberpay') || config.secretKey.includes('cyberpay') || config.publicKey?.startsWith('CPT'))) {
+        if (config && config.secretKey && (config.secretKey.startsWith('skey_') || config.secretKey.startsWith('sec_') || config.secretKey.startsWith('sk_') || config.secretKey.includes('stripe') || config.publicKey?.startsWith('pk_') || config.apiEndpointSources?.includes('cyberpay') || config.secretKey.includes('cyberpay') || config.publicKey?.startsWith('CPT'))) {
             try {
-                if (config.apiEndpointSources?.includes('cyberpay')) {
+                if (config.secretKey?.startsWith('sk_') || config.secretKey?.includes('stripe') || config.publicKey?.startsWith('pk_')) {
+                    // Call Stripe API
+                    const params = new URLSearchParams();
+                    params.append('amount', Math.round(amount * 100).toString()); // Stripe expects smallest unit (satang)
+                    params.append('currency', 'thb');
+                    params.append('payment_method_data[type]', 'promptpay');
+                    params.append('confirm', 'true');
+                    params.append('return_url', config.webhookUrl || 'https://api.gachapay.in.th/webhook/stripe');
+                    params.append('metadata[reference_id]', referenceNumber);
+
+                    const paymentRes = await fetch('https://api.stripe.com/v1/payment_intents', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': 'Bearer ' + config.secretKey,
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: params.toString(),
+                    });
+
+                    const paymentResult = await paymentRes.json();
+
+                    if (paymentResult.id && paymentResult.next_action?.promptpay_display_qr_code?.image_url_png) {
+                        qrCodeUrl = paymentResult.next_action.promptpay_display_qr_code.image_url_png;
+                        gatewayChargeId = paymentResult.id;
+                    } else {
+                        console.error('Stripe API error response:', paymentResult);
+                    }
+                } else if (config.apiEndpointSources?.includes('cyberpay')) {
                     // Call Cyberpay API
                     const partnerId = config.publicKey;
                     const secretKey = config.secretKey;
@@ -414,6 +441,7 @@ export class PaymentService {
         });
         const methodId = paymentMethodRecord ? paymentMethodRecord.id : (method === 'promptpay' ? BigInt(2) : method === 'truemoney' ? BigInt(3) : BigInt(1));
 
+        const isStripe = config && (config.secretKey?.startsWith('sk_') || config.secretKey?.includes('stripe') || config.publicKey?.startsWith('pk_'));
         const isCyberpay = config && config.apiEndpointSources?.includes('cyberpay');
 
         await this.prisma.topupTransaction.create({
@@ -427,7 +455,7 @@ export class PaymentService {
                 expiresAt: new Date(Date.now() + 3 * 60 * 1000),
                 paymentUrl: qrCodeUrl,
                 adminNote: gatewayChargeId 
-                    ? (isCyberpay ? `Cyberpay Ref: ${gatewayChargeId}` : `Omise Charge ID: ${gatewayChargeId}`)
+                    ? (isStripe ? `Stripe PI: ${gatewayChargeId}` : (isCyberpay ? `Cyberpay Ref: ${gatewayChargeId}` : `Omise Charge ID: ${gatewayChargeId}`))
                     : 'Simulated Gateway',
             },
         });
@@ -435,7 +463,7 @@ export class PaymentService {
         return {
             success: true,
             message: gatewayChargeId 
-                ? (isCyberpay ? 'QR code generated via Cyberpay' : 'QR code generated via Omise')
+                ? (isStripe ? 'QR code generated via Stripe' : (isCyberpay ? 'QR code generated via Cyberpay' : 'QR code generated via Omise'))
                 : 'QR code generated successfully',
             data: { qrCode: qrCodeUrl, referenceNumber, expiresAt: new Date(Date.now() + 3 * 60 * 1000), method },
         };

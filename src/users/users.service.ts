@@ -4,18 +4,15 @@ import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { GamesService } from '../games/games.service';
 
+import { randomBytes } from 'crypto';
+
 @Injectable()
 export class UsersService {
-    constructor(private prisma: PrismaService) { }
+    constructor(private readonly prisma: PrismaService) { }
 
     async create(data: Prisma.UserCreateInput) {
         if (!data.uuid) {
-            const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-            let customUuid = '';
-            for (let i = 0; i < 12; i++) {
-                customUuid += characters.charAt(Math.floor(Math.random() * characters.length));
-            }
-            data.uuid = customUuid;
+            data.uuid = randomBytes(8).toString('hex').slice(0, 12);
         }
         return this.prisma.user.create({ data });
     }

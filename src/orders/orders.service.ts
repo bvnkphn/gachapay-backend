@@ -27,8 +27,8 @@ const STATUS_LABEL: Record<string, string> = {
 @Injectable()
 export class OrdersService {
     constructor(
-        private prisma: PrismaService,
-        private apiCreditService: ApiCreditService,
+        private readonly prisma: PrismaService,
+        private readonly apiCreditService: ApiCreditService,
     ) {}
 
     async create(data: Prisma.OrderUncheckedCreateInput) {
@@ -123,7 +123,7 @@ export class OrdersService {
         // Search: UID / email / Order ID
         if (opts.search) {
             const s = opts.search.trim();
-            const numId = !isNaN(Number(s)) ? BigInt(s) : undefined;
+            const numId = !Number.isNaN(Number(s)) ? BigInt(s) : undefined;
             where.OR = [
                 { uid:   { contains: s, mode: 'insensitive' } },
                 { email: { contains: s, mode: 'insensitive' } },

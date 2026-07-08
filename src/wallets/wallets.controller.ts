@@ -7,7 +7,7 @@ import { UsersService } from '../users/users.service';
 @Controller('wallets')
 @UseGuards(JwtAuthGuard)
 export class WalletsController {
-    constructor(private usersService: UsersService) { }
+    constructor(private readonly usersService: UsersService) { }
 
     @Get('me/balance')
     async getBalance(@Req() req) {

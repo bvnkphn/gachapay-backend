@@ -4,9 +4,9 @@ import * as nodemailer from 'nodemailer';
 
 @Injectable()
 export class EmailService {
-    private transporter: nodemailer.Transporter;
+    private readonly transporter: nodemailer.Transporter;
 
-    constructor(private configService: ConfigService) {
+    constructor(private readonly configService: ConfigService) {
         this.transporter = nodemailer.createTransport({
             host: this.configService.get('EMAIL_HOST'),
             port: this.configService.get('EMAIL_PORT'),

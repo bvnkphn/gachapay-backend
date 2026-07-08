@@ -3,6 +3,11 @@
 
 set -e
 
+# Copy DATABASE_URL to DIRECT_URL if DIRECT_URL is not set
+if [ -z "$DIRECT_URL" ]; then
+    export DIRECT_URL="$DATABASE_URL"
+fi
+
 echo "🚀 Coupon Validation API - เริ่มต้นอย่างรวดเร็ว"
 echo "================================================="
 

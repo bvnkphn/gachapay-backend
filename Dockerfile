@@ -14,6 +14,8 @@ RUN npm ci --ignore-scripts
 COPY . .
 
 # Generate Prisma
+ENV DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres"
+ENV DIRECT_URL="postgresql://postgres:postgres@localhost:5432/postgres"
 RUN npx --no-install prisma generate
 
 # Build the NestJS application

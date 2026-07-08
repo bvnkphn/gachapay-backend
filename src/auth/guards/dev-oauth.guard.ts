@@ -9,8 +9,9 @@ export class DevOrGoogleAuthGuard extends AuthGuard('google') {
     }
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
+        const isDev = this.configService.get('NODE_ENV') !== 'production';
         const clientId = this.configService.get('GOOGLE_CLIENT_ID');
-        if (!clientId || clientId.includes('YOUR_GOOGLE') || clientId === 'your-google-client-id') {
+        if (isDev && (!clientId || clientId.includes('YOUR_GOOGLE') || clientId === 'your-google-client-id')) {
             const request = context.switchToHttp().getRequest();
             request.user = {
                 id: 'mock-google-id-12345',
@@ -24,7 +25,7 @@ export class DevOrGoogleAuthGuard extends AuthGuard('google') {
             return await (super.canActivate(context) as Promise<boolean>);
         } catch (err) {
             // If passport fails, fallback to mock in development
-            if (this.configService.get('NODE_ENV') === 'development') {
+            if (isDev) {
                 const request = context.switchToHttp().getRequest();
                 request.user = {
                     id: 'mock-google-id-12345',
@@ -46,8 +47,9 @@ export class DevOrFacebookAuthGuard extends AuthGuard('facebook') {
     }
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
+        const isDev = this.configService.get('NODE_ENV') !== 'production';
         const appId = this.configService.get('FACEBOOK_APP_ID');
-        if (!appId || appId.includes('YOUR_FACEBOOK') || appId === 'your-facebook-app-id') {
+        if (isDev && (!appId || appId.includes('YOUR_FACEBOOK') || appId === 'your-facebook-app-id')) {
             const request = context.switchToHttp().getRequest();
             request.user = {
                 id: 'mock-facebook-id-12345',
@@ -61,7 +63,7 @@ export class DevOrFacebookAuthGuard extends AuthGuard('facebook') {
             return await (super.canActivate(context) as Promise<boolean>);
         } catch (err) {
             // If passport fails, fallback to mock in development
-            if (this.configService.get('NODE_ENV') === 'development') {
+            if (isDev) {
                 const request = context.switchToHttp().getRequest();
                 request.user = {
                     id: 'mock-facebook-id-12345',

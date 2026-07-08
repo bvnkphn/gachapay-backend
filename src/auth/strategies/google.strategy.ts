@@ -8,9 +8,9 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     constructor(private readonly configService: ConfigService) {
         super({
             clientID: configService.get('GOOGLE_CLIENT_ID') || 
-                (process.env.NODE_ENV === 'production' ? undefined : 'mock-google-client-id'),
+                (process.env.NODE_ENV === 'production' ? 'dummy-google-client-id' : 'mock-google-client-id'),
             clientSecret: configService.get('GOOGLE_CLIENT_SECRET') || 
-                (process.env.NODE_ENV === 'production' ? undefined : 'mock-google-client-secret'),
+                (process.env.NODE_ENV === 'production' ? 'dummy-google-client-secret' : 'mock-google-client-secret'),
             callbackURL: configService.get('GOOGLE_CALLBACK_URL') || 'http://localhost:3001/api/auth/google/callback',
             scope: ['email', 'profile'],
         });

@@ -8,9 +8,9 @@ export class FacebookStrategy extends PassportStrategy(Strategy, 'facebook') {
     constructor(private readonly configService: ConfigService) {
         super({
             clientID: configService.get('FACEBOOK_APP_ID') || 
-                (process.env.NODE_ENV === 'production' ? undefined : 'mock-facebook-client-id'),
+                (process.env.NODE_ENV === 'production' ? 'dummy-facebook-app-id' : 'mock-facebook-client-id'),
             clientSecret: configService.get('FACEBOOK_APP_SECRET') || 
-                (process.env.NODE_ENV === 'production' ? undefined : 'mock-facebook-client-secret'),
+                (process.env.NODE_ENV === 'production' ? 'dummy-facebook-client-secret' : 'mock-facebook-client-secret'),
             callbackURL: configService.get('FACEBOOK_CALLBACK_URL') || 'http://localhost:3001/auth/facebook/callback',
             scope: ['public_profile'],
             profileFields: ['id', 'displayName', 'photos'],

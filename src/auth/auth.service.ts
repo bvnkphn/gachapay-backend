@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
@@ -113,7 +113,11 @@ export class AuthService {
                 await this.emailService.sendOtpEmail(user.email, otp);
             } catch (err) {
                 console.error('Failed to send admin OTP email:', err);
-                devOtp = otp;
+                if (this.configService.get('NODE_ENV') !== 'production') {
+                    devOtp = otp;
+                } else {
+                    throw new InternalServerErrorException('Failed to send OTP email. Please try again.');
+                }
             }
 
             // บันทึก OTP sent

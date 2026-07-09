@@ -174,18 +174,16 @@ trivy-image-scan:
 #     ZAP_TARGET_URL: "${TARGET_URL}"
 #   script:
 #     - mkdir -p /zap/wrk
-#     - zap-baseline.py
+#     - zap-api-scan.py
 #         -t "$ZAP_TARGET_URL"
+#         -f openapi
 #         -g gen.conf
 #         -r zap-report.html
-#         -J gl-dast-report.json
 #         -I
 #   artifacts:
 #     when: always
 #     paths:
 #       - zap-report.html
-#     reports:
-#       dast: gl-dast-report.json
 #   rules:
 #     - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'
 #   allow_failure: true

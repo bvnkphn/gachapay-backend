@@ -213,4 +213,52 @@ export class WebhookController {
 
         return { received: true };
     }
+
+    /**
+     * Beam Checkout webhook handler
+     * POST /webhooks/beam
+     */
+    @Post('beam')
+    async handleBeamWebhook(
+        @Body() payload: any,
+        @Query('secret') secret?: string,
+        @Headers('x-webhook-secret') headerSecret?: string,
+    ) {
+        this.verifyWebhookSecret(secret || headerSecret || payload.signature || payload.secret);
+        console.log('Beam Webhook Payload:', payload);
+
+        const eventType = payload.eventType;
+        const chargeData = payload.data || {};
+
+        const isSucceeded = eventType === 'purchase.succeeded' || eventType === 'charge.succeeded' || payload.status === 'SUCCEEDED' || payload.status === 'completed';
+
+        const referenceId = chargeData.referenceId || chargeData.reference_id || payload.referenceId || payload.ref_1 || payload.reference_id;
+        const amount = chargeData.amount ? Number(chargeData.amount) / 100 : (payload.amount ? Number(payload.amount) / 100 : undefined);
+        const transactionId = chargeData.id || payload.id;
+
+        if (!referenceId) {
+            throw new BadRequestException('Missing referenceId');
+        }
+
+        const tx = await this.paymentService.findTransactionByRef(referenceId);
+        if (!tx) {
+            throw new BadRequestException('Transaction not found');
+        }
+
+        const status = isSucceeded ? 'completed' : 'failed';
+        await this.paymentService.updatePaymentStatus(
+            referenceId,
+            status,
+            amount || Number(tx.amount),
+            tx.userId
+        );
+
+        return {
+            status: true,
+            message: 'success',
+            data: {
+                transaction_id: transactionId || 'unknown'
+            }
+        };
+    }
 }

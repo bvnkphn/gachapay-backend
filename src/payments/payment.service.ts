@@ -10,11 +10,11 @@ const DEFAULT_GATEWAY_SETTINGS = [
     enabled: true,
     fee: 0,
     webhookUrl: "https://api.gachapay.in.th/webhook/promptpay",
-    publicKey: "pkey_live_5xKZ2mN8qW3rT1uY",
-    secretKey: "skey_live_••••••••••••••••",
-    apiEndpointSources: "https://api.omise.co/sources",
-    apiEndpointCharges: "https://api.omise.co/charges",
-    provider: "omise",
+    publicKey: "",
+    secretKey: "",
+    apiEndpointSources: "https://gateway.cyberpay.tech/api/third-party/payment",
+    apiEndpointCharges: "",
+    provider: "cyberpay",
     color: "#38bdf8",
     accent: "rgba(56,189,248,0.15)",
   },
@@ -26,11 +26,11 @@ const DEFAULT_GATEWAY_SETTINGS = [
     enabled: true,
     fee: 1.5,
     webhookUrl: "https://api.gachapay.in.th/webhook/truemoney",
-    publicKey: "TM_PUB_9kLp4vXn2mQs",
-    secretKey: "TM_SEC_••••••••••••••••",
-    apiEndpointSources: "https://api.omise.co/sources",
-    apiEndpointCharges: "https://api.omise.co/charges",
-    provider: "omise",
+    publicKey: "",
+    secretKey: "",
+    apiEndpointSources: "https://gateway.cyberpay.tech/api/third-party/payment",
+    apiEndpointCharges: "",
+    provider: "cyberpay",
     color: "#f59e0b",
     accent: "rgba(245,158,11,0.15)",
   },
@@ -42,8 +42,8 @@ const DEFAULT_GATEWAY_SETTINGS = [
     enabled: true,
     fee: 0,
     webhookUrl: "https://api.gachapay.in.th/webhook/bank",
-    publicKey: "BT_PUB_8mKq3sNj6tWn",
-    secretKey: "BT_SEC_••••••••••••••••",
+    publicKey: "",
+    secretKey: "",
     color: "#a78bfa",
     accent: "rgba(167,139,250,0.15)",
   },
@@ -55,8 +55,8 @@ const DEFAULT_GATEWAY_SETTINGS = [
     enabled: true,
     fee: 0,
     webhookUrl: "https://api.gachapay.in.th/webhook/wallet",
-    publicKey: "CW_PUB_7rBq1tNk5sVm",
-    secretKey: "CW_SEC_••••••••••••••••",
+    publicKey: "",
+    secretKey: "",
     color: "#34d399",
     accent: "rgba(52,211,153,0.15)",
   },
@@ -125,6 +125,19 @@ export class PaymentService {
         }
         try {
             const parsed = JSON.parse(setting.value);
+            const cleanKey = (val: string) => {
+                if (!val) return "";
+                const lower = val.toLowerCase();
+                if (lower.includes('pkey_live_5xkz') || 
+                    lower.includes('tm_pub_9klp') || 
+                    lower.includes('bt_pub_8mkq') || 
+                    lower.includes('cw_pub_7rbq') || 
+                    lower.includes('••••••••')
+                ) {
+                    return "";
+                }
+                return val;
+            };
             const migrated = parsed.map((m: any) => {
                 if (m.id === 'credit' || m.id === 'bank_transfer') {
                     return {
@@ -135,8 +148,8 @@ export class PaymentService {
                         enabled: m.enabled ?? true,
                         fee: m.fee ?? 0,
                         webhookUrl: "https://api.gachapay.in.th/webhook/bank",
-                        publicKey: m.publicKey || "BT_PUB_8mKq3sNj6tWn",
-                        secretKey: m.secretKey || "BT_SEC_••••••••••••••••",
+                        publicKey: cleanKey(m.publicKey),
+                        secretKey: cleanKey(m.secretKey),
                         color: "#a78bfa",
                         accent: "rgba(167,139,250,0.15)",
                     };
@@ -147,6 +160,8 @@ export class PaymentService {
                         name: "Coin",
                         nameEn: "Coin",
                         icon: "🎮",
+                        publicKey: cleanKey(m.publicKey),
+                        secretKey: cleanKey(m.secretKey),
                     };
                 }
                 if (m.id === 'promptpay') {
@@ -155,6 +170,8 @@ export class PaymentService {
                         name: "QR",
                         nameEn: "QR",
                         icon: "⚡",
+                        publicKey: cleanKey(m.publicKey),
+                        secretKey: cleanKey(m.secretKey),
                         provider: m.provider || (m.apiEndpointSources?.includes('beam') ? 'beam' : 'cyberpay'),
                         apiEndpointSources: m.apiEndpointSources || "https://gateway.cyberpay.tech/api/third-party/payment",
                         apiEndpointCharges: m.apiEndpointCharges || "",
@@ -166,6 +183,8 @@ export class PaymentService {
                         name: "TrueWallet",
                         nameEn: "TrueWallet",
                         icon: "💰",
+                        publicKey: cleanKey(m.publicKey),
+                        secretKey: cleanKey(m.secretKey),
                         provider: m.provider || (m.apiEndpointSources?.includes('beam') ? 'beam' : 'cyberpay'),
                         apiEndpointSources: m.apiEndpointSources || "https://gateway.cyberpay.tech/api/third-party/payment",
                         apiEndpointCharges: m.apiEndpointCharges || "",
@@ -184,8 +203,8 @@ export class PaymentService {
                     enabled: true,
                     fee: 0,
                     webhookUrl: "https://api.gachapay.in.th/webhook/bank",
-                    publicKey: "BT_PUB_8mKq3sNj6tWn",
-                    secretKey: "BT_SEC_••••••••••••••••",
+                    publicKey: "",
+                    secretKey: "",
                     color: "#a78bfa",
                     accent: "rgba(167,139,250,0.15)",
                 });

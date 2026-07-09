@@ -21,15 +21,6 @@ export class ApiCreditService {
             alertThreshold: 1000,
             enabled: true,
           },
-          {
-            name: 'Omise',
-            code: 'omise',
-            description: 'Payment Gateway — PromptPay QR / TrueMoney Wallet',
-            apiBaseUrl: 'https://api.omise.co',
-            balance: 0,
-            alertThreshold: 500,
-            enabled: true,
-          },
         ],
       });
     }

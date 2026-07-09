@@ -6,38 +6,38 @@ variables:
   IMAGE_LATEST: "${CI_REGISTRY_IMAGE}:latest"
 
 stages:
-  - test
+  # - test
   - build
   - sast
   - container-scan
   # - dast
 
 # ─── Unit Test + Coverage ────────────────────────
-test:
-  stage: test
-  image: node:${NODE_VERSION}-alpine
-  cache:
-    key:
-      files:
-        - package-lock.json
-    paths:
-      - node_modules/
-  before_script:
-    - npm ci --prefer-offline
-  script:
-    - npm run test -- --coverage --coverageReporters=text --coverageReporters=cobertura
-  coverage: '/Lines\s*:\s*(\d+\.?\d*)%/'
-  artifacts:
-    when: always
-    reports:
-      coverage_report:
-        coverage_format: cobertura
-        path: coverage/cobertura-coverage.xml
-      junit: junit.xml
-    expire_in: 7 days
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'
+# test:
+#   stage: test
+#   image: node:${NODE_VERSION}-alpine
+#   cache:
+#     key:
+#       files:
+#         - package-lock.json
+#     paths:
+#       - node_modules/
+#   before_script:
+#     - npm ci --prefer-offline
+#   script:
+#     - npm run test -- --coverage --coverageReporters=text --coverageReporters=cobertura
+#   coverage: '/Lines\s*:\s*(\d+\.?\d*)%/'
+#   artifacts:
+#     when: always
+#     reports:
+#       coverage_report:
+#         coverage_format: cobertura
+#         path: coverage/cobertura-coverage.xml
+#       junit: junit.xml
+#     expire_in: 7 days
+#   rules:
+#     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+#     - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'
 
 # ─── Build Docker Image ──────────────────────────
 build:

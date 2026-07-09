@@ -25,7 +25,7 @@ stages:
 #   before_script:
 #     - npm ci --prefer-offline
 #   script:
-#     - npm run test -- --coverage --coverageReporters=text --coverageReporters=cobertura
+#     - npm run test -- --coverage --coverageReporters=text --coverageReporters=cobertura --coverageReporters=html
 #   coverage: '/Lines\s*:\s*(\d+\.?\d*)%/'
 #   artifacts:
 #     when: always
@@ -34,7 +34,8 @@ stages:
 #         coverage_format: cobertura
 #         path: coverage/cobertura-coverage.xml
 #       junit: junit.xml
-#     expire_in: 7 days
+#     paths:
+#       - coverage/
 #   rules:
 #     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 #     - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'
@@ -119,13 +120,13 @@ trivy-fs-scan:
         --severity MEDIUM,HIGH,CRITICAL
         --scanners vuln,secret,misconfig
         --format template
-        --template "@/contrib/gitlab.tpl"
-        --output gl-container-scanning-report.json
+        --template "@/contrib/html.tpl"
+        --output trivy-fs-report.html
         .
   artifacts:
     when: always
-    reports:
-      container_scanning: gl-container-scanning-report.json
+    paths:
+      - trivy-fs-report.html
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'
@@ -152,13 +153,13 @@ trivy-image-scan:
         --exit-code 0
         --severity MEDIUM,HIGH,CRITICAL
         --format template
-        --template "@/contrib/gitlab.tpl"
-        --output gl-container-scanning-report.json
+        --template "@/contrib/html.tpl"
+        --output trivy-image-report.html
         "$IMAGE_NAME"
   artifacts:
     when: always
-    reports:
-      container_scanning: gl-container-scanning-report.json
+    paths:
+      - trivy-image-report.html
   rules:
     - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'
   allow_failure: true

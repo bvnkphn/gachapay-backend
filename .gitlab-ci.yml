@@ -95,7 +95,7 @@ semgrep:
   variables:
     SEMGREP_APP_TOKEN: $SEMGREP_APP_TOKEN
   script:
-    - echo "Token length: ${#SEMGREP_APP_TOKEN}"
+    - echo "Token length = ${#SEMGREP_APP_TOKEN}"
     - semgrep ci --no-suppress-errors
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'

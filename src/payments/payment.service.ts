@@ -155,9 +155,9 @@ export class PaymentService {
                         name: "QR",
                         nameEn: "QR",
                         icon: "⚡",
-                        provider: m.provider || (m.apiEndpointSources?.includes('cyberpay') ? 'cyberpay' : 'omise'),
-                        apiEndpointSources: m.apiEndpointSources || "https://api.omise.co/sources",
-                        apiEndpointCharges: m.apiEndpointCharges || "https://api.omise.co/charges",
+                        provider: m.provider || (m.apiEndpointSources?.includes('beam') ? 'beam' : 'cyberpay'),
+                        apiEndpointSources: m.apiEndpointSources || "https://gateway.cyberpay.tech/api/third-party/payment",
+                        apiEndpointCharges: m.apiEndpointCharges || "",
                     };
                 }
                 if (m.id === 'truemoney') {
@@ -166,9 +166,9 @@ export class PaymentService {
                         name: "TrueWallet",
                         nameEn: "TrueWallet",
                         icon: "💰",
-                        provider: m.provider || (m.apiEndpointSources?.includes('cyberpay') ? 'cyberpay' : 'omise'),
-                        apiEndpointSources: m.apiEndpointSources || "https://api.omise.co/sources",
-                        apiEndpointCharges: m.apiEndpointCharges || "https://api.omise.co/charges",
+                        provider: m.provider || (m.apiEndpointSources?.includes('beam') ? 'beam' : 'cyberpay'),
+                        apiEndpointSources: m.apiEndpointSources || "https://gateway.cyberpay.tech/api/third-party/payment",
+                        apiEndpointCharges: m.apiEndpointCharges || "",
                     };
                 }
                 return m;

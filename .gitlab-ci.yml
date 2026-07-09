@@ -11,8 +11,7 @@ variables:
 cache:
   key:
     files:
-      - backend/package-lock.json
-      - frontend/package-lock.json
+      - package-lock.json
   paths:
     - .npm/
 
@@ -21,12 +20,10 @@ install_dependencies:
   image: node:18-alpine
   script:
     - npm config set cache ${CI_PROJECT_DIR}/.npm
-    - cd backend && npm ci
-    - cd ../frontend && npm ci
+    - npm ci
   artifacts:
     paths:
-      - backend/node_modules/
-      - frontend/node_modules/
+      - node_modules/
     expire_in: 1 hour
 
 test_backend:
@@ -35,12 +32,10 @@ test_backend:
   dependencies:
     - install_dependencies
   script:
-    - cd backend
-    # Run test coverage, ignore if test command is not fully configured yet
     - npm run test:cov || true
   artifacts:
     paths:
-      - backend/coverage/
+      - coverage/
     expire_in: 1 hour
   allow_failure: true
 
@@ -50,8 +45,7 @@ build_project:
   dependencies:
     - install_dependencies
   script:
-    - cd backend && npm run build
-    - cd ../frontend && npm run build
+    - npm run build
 
 sonarqube_check:
   stage: sonarqube

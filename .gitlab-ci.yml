@@ -134,7 +134,7 @@ trivy-fs-scan:
 # ─── Trivy (image) ────────────────────────────────────────
 trivy-image-scan:
   stage: container-scan
-  needs: ["nest-build"]
+  needs: ["build"]
   image:
     name: aquasec/trivy:latest
     entrypoint: [""]

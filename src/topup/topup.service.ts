@@ -6,12 +6,16 @@ import {
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTopupDto } from './dto/create-topup.dto';
+import { ApiCreditService } from '../api-credit/api-credit.service';
 
 const TOPUP_EXPIRE_MINUTES = 15;
 
 @Injectable()
 export class TopupService {
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private apiCreditService: ApiCreditService,
+    ) { }
 
     async getMethods() {
         const methods = await this.prisma.paymentMethod.findMany({
@@ -171,7 +175,10 @@ export class TopupService {
                 const orderIdStr = parts[1];
                 try {
                     const orderId = BigInt(orderIdStr);
-                    const order = await txPrisma.order.findUnique({ where: { id: orderId } });
+                    const order = await txPrisma.order.findUnique({ 
+                        where: { id: orderId },
+                        include: { package: true },
+                    });
                     if (order) {
                         const updatedOrder = await txPrisma.order.update({
                             where: { id: orderId },
@@ -199,6 +206,21 @@ export class TopupService {
                             } catch (err) {
                                 console.error("Failed to apply coupon on simulateComplete:", err);
                             }
+                        }
+
+                        // Deduct API credit from 24PaySeller provider
+                        try {
+                            const cost = order.package?.cost 
+                                ? Number(order.package.cost) 
+                                : Number(order.packagePrice);
+                            await this.apiCreditService.deductCredit(
+                                '24payseller',
+                                cost,
+                                `หักเครดิตสำหรับออเดอร์ #${orderId} (แพ็คเกจ: ${order.packageName})`,
+                                orderId
+                            );
+                        } catch (err) {
+                            console.error('Failed to deduct API credit on simulateComplete:', err);
                         }
                     }
                 } catch (err) {}

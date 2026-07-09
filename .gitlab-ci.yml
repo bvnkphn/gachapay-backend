@@ -95,8 +95,15 @@ semgrep:
   variables:
     SEMGREP_APP_TOKEN: $SEMGREP_APP_TOKEN
   script:
-    - echo "Token = [$SEMGREP_APP_TOKEN]"
-    - semgrep ci --no-suppress-errors
+    # - semgrep ci
+    - semgrep scan \
+      --config=p/owasp-top-ten \
+      --config=p/typescript \
+      --config=p/nodejs \
+      --config=p/secrets \
+      --config=p/sql-injection \
+      --config=p/jwt \
+      .
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'

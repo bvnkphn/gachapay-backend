@@ -12,7 +12,7 @@ import { AdminGuard } from '../auth/guards/admin.guard';
 @UseGuards(JwtAuthGuard, AdminGuard)
 @Controller('admin/games/:gameId/packages')
 export class PackagesController {
-    constructor(private packagesService: PackagesService) {}
+    constructor(private readonly packagesService: PackagesService) {}
 
     // GET /admin/games/:gameId/packages
     // ดึงแพ็กเกจทั้งหมดของเกม (รวมข้อมูล profit, flash sale status, quota)

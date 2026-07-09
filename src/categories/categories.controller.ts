@@ -5,7 +5,7 @@ import { CategoriesService } from './categories.service';
 @ApiTags('Categories')
 @Controller('categories')
 export class CategoriesController {
-    constructor(private categoriesService: CategoriesService) {}
+    constructor(private readonly categoriesService: CategoriesService) {}
 
     // Get all categories
     @Get()
@@ -17,7 +17,7 @@ export class CategoriesController {
     // Get category by ID
     @Get(':id')
     async findById(@Param('id') id: string) {
-        const bigIntId = parseInt(id, 10);
+        const bigIntId = Number.parseInt(id, 10);
         return this.categoriesService.findById(BigInt(bigIntId));
     }
 
@@ -49,14 +49,14 @@ export class CategoriesController {
             isActive?: boolean;
         },
     ) {
-        const bigIntId = parseInt(id, 10);
+        const bigIntId = Number.parseInt(id, 10);
         return this.categoriesService.update(BigInt(bigIntId), data);
     }
 
     // Delete category
     @Delete(':id')
     async delete(@Param('id') id: string) {
-        const bigIntId = parseInt(id, 10);
+        const bigIntId = Number.parseInt(id, 10);
         return this.categoriesService.delete(BigInt(bigIntId));
     }
 

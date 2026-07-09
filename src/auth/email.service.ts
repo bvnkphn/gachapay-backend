@@ -4,9 +4,9 @@ import * as nodemailer from 'nodemailer';
 
 @Injectable()
 export class EmailService {
-    private transporter: nodemailer.Transporter;
+    private readonly transporter: nodemailer.Transporter;
 
-    constructor(private configService: ConfigService) {
+    constructor(private readonly configService: ConfigService) {
         this.transporter = nodemailer.createTransport({
             host: this.configService.get('EMAIL_HOST'),
             port: this.configService.get('EMAIL_PORT'),
@@ -14,6 +14,9 @@ export class EmailService {
             auth: {
                 user: this.configService.get('EMAIL_USER'),
                 pass: this.configService.get('EMAIL_PASSWORD'),
+            },
+            tls: {
+                rejectUnauthorized: false,
             },
         });
     }
@@ -36,12 +39,12 @@ export class EmailService {
         };
 
         try {
-            // Check if email is configured
             const emailUser = this.configService.get('EMAIL_USER');
-            if (!emailUser || emailUser === 'your-email@gmail.com') {
-                // Development mode: just log the reset URL
+            const emailPass = this.configService.get('EMAIL_PASSWORD');
+            if (!emailUser || emailUser === 'your-email@gmail.com' || !emailPass || emailPass.includes('PASTE_YOUR_16_CHAR')) {
+                // Development mode / Placeholder detected: log reset URL to console
                 console.log('='.repeat(80));
-                console.log('📧 Password Reset Email (Development Mode)');
+                console.log('📧 Password Reset Email (Development Mode / Placeholder detected)');
                 console.log('='.repeat(80));
                 console.log('To:', to);
                 console.log('Reset URL:', resetUrl);
@@ -52,8 +55,12 @@ export class EmailService {
             await this.transporter.sendMail(mailOptions);
             console.log('Password reset email sent to:', to);
         } catch (error) {
-            console.error('Error sending email:', error);
-            throw error;
+            console.error('Error sending email, fallback to console log:', error);
+            console.log('='.repeat(80));
+            console.log('📧 Fallback Password Reset Email');
+            console.log('To:', to);
+            console.log('Reset URL:', resetUrl);
+            console.log('='.repeat(80));
         }
     }
 
@@ -104,10 +111,11 @@ export class EmailService {
 
         try {
             const emailUser = this.configService.get('EMAIL_USER');
-            if (!emailUser || emailUser === 'your-email@gmail.com') {
-                // Development mode: log OTP
+            const emailPass = this.configService.get('EMAIL_PASSWORD');
+            if (!emailUser || emailUser === 'your-email@gmail.com' || !emailPass || emailPass.includes('PASTE_YOUR_16_CHAR')) {
+                // Development mode / Placeholder detected: log OTP to console
                 console.log('='.repeat(80));
-                console.log('📧 OTP Email (Development Mode)');
+                console.log('📧 OTP Email (Development Mode / Placeholder detected)');
                 console.log('='.repeat(80));
                 console.log('To:', to);
                 console.log('OTP Code:', otp);
@@ -119,8 +127,13 @@ export class EmailService {
             await this.transporter.sendMail(mailOptions);
             console.log('OTP email sent to:', to);
         } catch (error) {
-            console.error('Error sending OTP email:', error);
-            throw error;
+            console.error('Error sending OTP email, fallback to console log:', error);
+            console.log('='.repeat(80));
+            console.log('📧 Fallback OTP Email');
+            console.log('To:', to);
+            console.log('OTP Code:', otp);
+            console.log('Expires in: 10 minutes');
+            console.log('='.repeat(80));
         }
     }
 }

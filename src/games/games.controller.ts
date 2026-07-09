@@ -9,8 +9,8 @@ import { AdminGuard } from '../auth/guards/admin.guard';
 @Controller('games')
 export class GamesController {
     constructor(
-        private gamesService: GamesService,
-        private externalGameService: ExternalGameService,
+        private readonly gamesService: GamesService,
+        private readonly externalGameService: ExternalGameService,
     ) { }
 
     @Get('categories')
@@ -26,7 +26,7 @@ export class GamesController {
         @Query('page') page: string = '1',
         @Query('pageSize') pageSize: string = '100',
     ) {
-        return this.gamesService.fetchGameListFromExternal(search, category, parseInt(page, 10), parseInt(pageSize, 10));
+        return this.gamesService.fetchGameListFromExternal(search, category, Number.parseInt(page, 10), Number.parseInt(pageSize, 10));
     }
 
     // ✅ เพิ่ม return type เป็น Promise<any> เพื่อแก้ TS4053

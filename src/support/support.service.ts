@@ -21,7 +21,7 @@ function serialize(obj: any): any {
 
 @Injectable()
 export class SupportService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   // ── Generate ticketNo ─────────────────────────────────────────
   private async generateTicketNo(): Promise<string> {
@@ -29,7 +29,7 @@ export class SupportService {
       orderBy: { id: 'desc' }, select: { ticketNo: true },
     });
     if (!last) return 'TK-0001';
-    const num = parseInt(last.ticketNo.replace('TK-', ''), 10) + 1;
+    const num = Number.parseInt(last.ticketNo.replace('TK-', ''), 10) + 1;
     return `TK-${String(num).padStart(4, '0')}`;
   }
 
@@ -65,7 +65,7 @@ export class SupportService {
         { email:    { contains: search, mode: 'insensitive' } },
         { name:     { contains: search, mode: 'insensitive' } },
         // ค้นหาจาก order id
-        ...(isNaN(Number(search)) ? [] : [{ orderId: BigInt(search) }]),
+        ...(Number.isNaN(Number(search)) ? [] : [{ orderId: BigInt(search) }]),
       ];
     }
 
@@ -241,4 +241,76 @@ export class SupportService {
     });
     return serialize(histories);
   }
+
+  // ── POST /support/tickets — public / user ───────────────────────
+  async createTicket(data: {
+    name: string;
+    email: string;
+    subject: string;
+    category?: string;
+    orderId?: string;
+    message: string;
+    imageUrl?: string;
+    userId?: string;
+  }) {
+    const ticketNo = await this.generateTicketNo();
+    
+    let uId: bigint | null = null;
+    if (data.userId) {
+      try {
+        uId = BigInt(data.userId);
+      } catch (e) {
+        console.error("Failed to parse user ID:", e);
+      }
+    }
+
+    let oId: bigint | null = null;
+    if (data.orderId) {
+      const cleanOrderId = data.orderId.replace(/\D/g, '');
+      if (cleanOrderId) {
+        try {
+          oId = BigInt(cleanOrderId);
+        } catch (e) {
+          console.error("Failed to parse order ID:", e);
+        }
+      }
+    }
+
+    const ticket = await this.prisma.supportTicket.create({
+      data: {
+        ticketNo,
+        userId: uId,
+        email: data.email,
+        name: data.name || 'Anonymous',
+        subject: data.subject,
+        category: data.category || 'general',
+        orderId: oId,
+        priority: 'normal',
+        status: 'new',
+      },
+    });
+
+    // Create the first message
+    await this.prisma.ticketMessage.create({
+      data: {
+        ticketId: ticket.id,
+        userId: uId,
+        senderType: 'user',
+        message: data.message,
+        imageUrl: data.imageUrl || null,
+      },
+    });
+
+    // Create ticket history log
+    await this.prisma.ticketHistory.create({
+      data: {
+        ticketId: ticket.id,
+        action: 'created',
+        note: `Ticket created by user (${data.email})`,
+      },
+    });
+
+    return serialize(ticket);
+  }
 }
+

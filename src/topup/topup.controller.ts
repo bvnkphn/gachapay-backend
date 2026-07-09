@@ -9,7 +9,7 @@ import { CreateTopupDto } from './dto/create-topup.dto';
 @Controller('topup')
 @UseGuards(JwtAuthGuard)
 export class TopupController {
-    constructor(private topupService: TopupService) { }
+    constructor(private readonly topupService: TopupService) { }
 
     @Get('methods')
     getMethods() {
@@ -40,5 +40,14 @@ export class TopupController {
     @Patch(':referenceId/cancel')
     simulateCancel(@Param('referenceId') referenceId: string, @Req() req) {
         return this.topupService.simulateCancel(referenceId, req.user.id);
+    }
+
+    @Patch(':referenceId/submit-slip')
+    submitSlip(
+        @Param('referenceId') referenceId: string,
+        @Req() req,
+        @Body() body: { slipUrl: string; bankCode?: string },
+    ) {
+        return this.topupService.submitSlip(referenceId, req.user.id, body.slipUrl, body.bankCode);
     }
 }

@@ -10,7 +10,7 @@ import { AdminGuard } from '../auth/guards/admin.guard';
 @UseGuards(JwtAuthGuard, AdminGuard)
 @Controller('reports')
 export class ReportsController {
-  constructor(private reportsService: ReportsService) {}
+  constructor(private readonly reportsService: ReportsService) {}
 
   // GET /reports/summary?period=month
   @Get('summary')
@@ -44,8 +44,8 @@ export class ReportsController {
   ) {
     return this.reportsService.getTransactions({
       period: period as any,
-      page:   parseInt(page, 10),
-      limit:  parseInt(limit, 10),
+      page:   Number.parseInt(page, 10),
+      limit:  Number.parseInt(limit, 10),
       status, dateFrom, dateTo,
     });
   }

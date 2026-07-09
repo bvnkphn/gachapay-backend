@@ -24,9 +24,9 @@ const WHITELIST = [
 @Injectable()
 export class MaintenanceMiddleware implements NestMiddleware {
   constructor(
-    private systemService: SystemService,
-    private prisma: PrismaService,
-    private jwtService: JwtService,
+    private readonly systemService: SystemService,
+    private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
   ) {}
 
   async use(req: Request, res: Response, next: NextFunction) {

@@ -9,7 +9,7 @@ import { AdminGuard } from '../auth/guards/admin.guard';
 @UseGuards(JwtAuthGuard, AdminGuard)
 @Controller('support/admin')
 export class SupportController {
-  constructor(private supportService: SupportService) {}
+  constructor(private readonly supportService: SupportService) {}
 
   // GET /support/admin/stats
   @Get('stats')
@@ -20,19 +20,18 @@ export class SupportController {
   // GET /support/admin/tickets
   // Query: page, limit, status, search, priority, dateFrom, dateTo, orderId
   @Get('tickets')
-  async findAll(
-    @Query('page')      page      = '1',
-    @Query('limit')     limit     = '20',
-    @Query('status')    status?:    string,
-    @Query('search')    search?:    string,
-    @Query('priority')  priority?:  string,
-    @Query('dateFrom')  dateFrom?:  string,
-    @Query('dateTo')    dateTo?:    string,
-    @Query('orderId')   orderId?:   string,
-  ) {
+  async findAll(@Query() query: any) {
+    const page = query.page || '1';
+    const limit = query.limit || '20';
     return this.supportService.findAll({
-      page: parseInt(page, 10), limit: parseInt(limit, 10),
-      status, search, priority, dateFrom, dateTo, orderId,
+      page: Number.parseInt(page, 10),
+      limit: Number.parseInt(limit, 10),
+      status: query.status,
+      search: query.search,
+      priority: query.priority,
+      dateFrom: query.dateFrom,
+      dateTo: query.dateTo,
+      orderId: query.orderId,
     });
   }
 

@@ -8,7 +8,7 @@ import { CouponValidationResponseDto } from './dto/coupon-validation-response.dt
 @ApiTags('Coupons')
 @Controller('coupons')
 export class CouponsController {
-    constructor(private couponsService: CouponsService) {}
+    constructor(private readonly couponsService: CouponsService) {}
 
     /**
      * Validate a coupon code

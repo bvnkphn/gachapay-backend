@@ -59,7 +59,7 @@ interface ExternalInputOption {
 
 @Injectable()
 export class GameImportService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Import external game data into database
@@ -91,16 +91,16 @@ export class GameImportService {
         where: { sku: externalPackage.sku },
         update: {
           name: externalPackage.name,
-          price: parseFloat(externalPackage.price),
-          originalPrice: parseFloat(externalPackage.originalPrice) || 0,
+          price: Number.parseFloat(externalPackage.price),
+          originalPrice: Number.parseFloat(externalPackage.price),
           isActive: true,
         },
         create: {
           gameId: game.id,
           sku: externalPackage.sku,
           name: externalPackage.name,
-          price: parseFloat(externalPackage.price),
-          originalPrice: parseFloat(externalPackage.originalPrice) || 0,
+          price: Number.parseFloat(externalPackage.price),
+          originalPrice: Number.parseFloat(externalPackage.price),
           isActive: true,
         },
       });

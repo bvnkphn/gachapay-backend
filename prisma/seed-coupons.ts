@@ -103,7 +103,28 @@ async function main() {
         },
     });
 
-    console.log({ coupon1, coupon2, coupon3, coupon4 });
+    // Coupon 5: Welcome coupon for first-time buyers (15% discount)
+    const coupon5 = await prisma.coupon.upsert({
+        where: { code: 'WELCOME' },
+        update: {},
+        create: {
+            code: 'WELCOME',
+            description: 'ยินดีต้อนรับสมาชิกใหม่ - ส่วนลด 15% (เฉพาะการเติมเงินครั้งแรก)',
+            discountType: 'PERCENTAGE',
+            discountValue: new Decimal(15),
+            minimumAmount: new Decimal(0),
+            maximumUses: 10000,
+            currentUsageCount: 0,
+            usagePerUser: 1,
+            startDate: now,
+            expiryDate: new Date(now.getFullYear() + 10, now.getMonth(), now.getDate()), // 10 years expiry
+            applicableGameIds: [],
+            applicablePackageIds: [],
+            isActive: true,
+        },
+    });
+
+    console.log({ coupon1, coupon2, coupon3, coupon4, coupon5 });
     console.log('Coupons seeded successfully!');
 }
 

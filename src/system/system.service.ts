@@ -20,7 +20,7 @@ const EXTERNAL_SERVICES = [
 
 @Injectable()
 export class SystemService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   // ── อ่านค่าทั้งหมดจาก DB ───────────────────────────────────────
   private async getAll(): Promise<Record<string, string>> {
@@ -48,7 +48,7 @@ export class SystemService {
       maintenance: {
         enabled: settings[KEYS.MAINTENANCE_ENABLED] === 'true',
         message: settings[KEYS.MAINTENANCE_MESSAGE] ?? '',
-        etaMinutes: parseInt(settings[KEYS.MAINTENANCE_ETA] ?? '30'),
+        etaMinutes: Number.parseInt(settings[KEYS.MAINTENANCE_ETA] ?? '30'),
       },
       notifications: {
         newOrder:         settings[KEYS.NOTIFY_NEW_ORDER]     === 'true',
@@ -97,9 +97,11 @@ export class SystemService {
             method: 'GET',
           });
           const ms = Date.now() - start;
-          const status = res.ok
-            ? ms < 500 ? 'normal' : ms < 2000 ? 'slow' : 'down'
-            : 'down';
+          let status = 'down';
+          if (res.ok) {
+            if (ms < 500) status = 'normal';
+            else if (ms < 2000) status = 'slow';
+          }
           return { id: svc.id, label: svc.label, status, responseMs: ms, checkedAt: new Date() };
         } catch {
           return { id: svc.id, label: svc.label, status: 'down', responseMs: null, checkedAt: new Date() };

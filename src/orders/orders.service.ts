@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { ApiCreditService } from '../api-credit/api-credit.service';
 
 // สถานะที่อนุญาตให้เปลี่ยนได้ (State Machine)
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
@@ -25,9 +26,22 @@ const STATUS_LABEL: Record<string, string> = {
 
 @Injectable()
 export class OrdersService {
-    constructor(private prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly apiCreditService: ApiCreditService,
+    ) {}
 
     async create(data: Prisma.OrderUncheckedCreateInput) {
+        // If finalPrice is 0 (or less), mark status as completed and method as free
+        if (data.finalPrice !== undefined) {
+            const priceVal = typeof data.finalPrice === 'object' && data.finalPrice !== null && 'toNumber' in data.finalPrice
+                ? (data.finalPrice as any).toNumber()
+                : Number(data.finalPrice);
+            if (priceVal <= 0) {
+                data.status = 'completed';
+                data.paymentMethod = 'free';
+            }
+        }
         return this.prisma.order.create({ data });
     }
 
@@ -109,7 +123,7 @@ export class OrdersService {
         // Search: UID / email / Order ID
         if (opts.search) {
             const s = opts.search.trim();
-            const numId = !isNaN(Number(s)) ? BigInt(s) : undefined;
+            const numId = !Number.isNaN(Number(s)) ? BigInt(s) : undefined;
             where.OR = [
                 { uid:   { contains: s, mode: 'insensitive' } },
                 { email: { contains: s, mode: 'insensitive' } },
@@ -177,6 +191,67 @@ export class OrdersService {
             where: { id: orderId },
             data:  { status: newStatus, updatedAt: new Date() },
         });
+
+        if (newStatus === 'refunded') {
+            if (updated.userId) {
+                const refundAmount = Number(updated.finalPrice ?? updated.packagePrice);
+                if (refundAmount > 0) {
+                    await this.prisma.user.update({
+                        where: { id: updated.userId },
+                        data: { wallet_balance: { increment: refundAmount } },
+                    });
+                }
+            }
+        }
+
+        if (newStatus === 'completed') {
+            if (updated.couponCode) {
+                try {
+                    const coupon = await this.prisma.coupon.findUnique({ where: { code: updated.couponCode } });
+                    if (coupon) {
+                        await this.prisma.couponUsage.create({
+                            data: {
+                                couponId: coupon.id,
+                                userId: updated.userId,
+                                orderId: updated.id,
+                                usedAmount: updated.packagePrice,
+                                discountAmount: updated.discountAmount,
+                            }
+                        });
+                        await this.prisma.coupon.update({
+                            where: { id: coupon.id },
+                            data: { currentUsageCount: { increment: 1 } },
+                        });
+                    }
+                } catch (err) {
+                    console.error("Failed to apply coupon on manual admin complete:", err);
+                }
+            }
+            if (updated.userId) {
+                await this.prisma.processReferralReward(updated.userId);
+            }
+            
+            // Deduct API credit from 24PaySeller provider
+            try {
+                const orderWithPkg = await this.prisma.order.findUnique({
+                    where: { id: orderId },
+                    include: { package: true },
+                });
+                if (orderWithPkg) {
+                    const cost = orderWithPkg.package?.cost 
+                        ? Number(orderWithPkg.package.cost) 
+                        : Number(orderWithPkg.packagePrice);
+                    await this.apiCreditService.deductCredit(
+                        '24payseller',
+                        cost,
+                        `หักเครดิตสำหรับออเดอร์ #${orderId} (แพ็คเกจ: ${orderWithPkg.packageName})`,
+                        orderId
+                    );
+                }
+            } catch (err) {
+                console.error('Failed to deduct API credit:', err);
+            }
+        }
 
         // Audit log
         await this.prisma.adminLog.create({
@@ -346,6 +421,118 @@ export class OrdersService {
                 createdAt: order.createdAt,
                 status:    order.status,
             },
+        };
+    }
+
+    // ─── Admin: GET /orders/admin/stats — Dashboard statistics ────────────────
+    async getAdminDashboardStats(days = 7) {
+        const now = new Date();
+        const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+        const daysAgoStart = new Date(); daysAgoStart.setDate(daysAgoStart.getDate() - days); daysAgoStart.setHours(0, 0, 0, 0);
+        const yesterday = new Date(todayStart); yesterday.setDate(yesterday.getDate() - 1);
+
+        const [allOrders, userCount, todayUsers, revenueByGame] = await Promise.all([
+            this.prisma.order.findMany({
+                where: { createdAt: { gte: daysAgoStart } },
+                orderBy: { createdAt: 'desc' },
+                select: { id: true, uid: true, email: true, gameName: true, packageName: true,
+                          packagePrice: true, finalPrice: true, paymentMethod: true,
+                          status: true, createdAt: true },
+            }),
+            this.prisma.user.count(),
+            this.prisma.user.count({ where: { created_at: { gte: todayStart } } }),
+            this.prisma.order.findMany({
+                where: { status: 'completed' },
+                select: { gameName: true, finalPrice: true, packagePrice: true, createdAt: true },
+            }),
+        ]);
+
+        const todayOrders = allOrders.filter(o => o.createdAt >= todayStart);
+        const completedOrders = allOrders.filter(o => o.status === 'completed');
+        const pendingOrders = allOrders.filter(o => o.status === 'pending');
+        const failedOrders = allOrders.filter(o => o.status === 'failed');
+        const todayCompleted = todayOrders.filter(o => o.status === 'completed');
+        const todayRevenue = todayCompleted.reduce((s, o) => s + Number(o.finalPrice ?? o.packagePrice), 0);
+
+        // Build chart data for requested days
+        const chartData: Record<string, number> = {};
+        const chartLabels: string[] = [];
+        for (let i = days - 1; i >= 0; i--) {
+            const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0);
+            const key = d.toISOString().slice(0, 10);
+            chartData[key] = 0;
+            chartLabels.push(key);
+        }
+        revenueByGame.filter(o => o.createdAt >= daysAgoStart).forEach(o => {
+            const key = o.createdAt.toISOString().slice(0, 10);
+            if (chartData[key] !== undefined) chartData[key] += Number(o.finalPrice ?? o.packagePrice);
+        });
+
+        // Top games by revenue (all time)
+        const gameMap: Record<string, { revenue: number; orders: number }> = {};
+        revenueByGame.forEach(o => {
+            const name = o.gameName;
+            if (!gameMap[name]) gameMap[name] = { revenue: 0, orders: 0 };
+            gameMap[name].revenue += Number(o.finalPrice ?? o.packagePrice);
+            gameMap[name].orders += 1;
+        });
+        const topGames = Object.entries(gameMap)
+            .sort((a, b) => b[1].revenue - a[1].revenue)
+            .slice(0, 5)
+            .map(([name, stats]) => ({ name, revenue: stats.revenue, orders: stats.orders }));
+
+        const successRate = allOrders.length > 0
+            ? Math.round((completedOrders.length / allOrders.length) * 1000) / 10
+            : 0;
+
+        const totalRevenue = completedOrders.reduce((s, o) => s + Number(o.finalPrice ?? o.packagePrice), 0);
+        const totalCost = completedOrders.reduce((s, o) => s + Number(o.packagePrice ?? 0), 0);
+        const totalProfit = totalRevenue - totalCost;
+        const profitPercent = totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 1000) / 10 : 0;
+
+        return {
+            stats: {
+                revenue: totalRevenue,
+                orderCount: allOrders.length,
+                completedCount: completedOrders.length,
+                profit: totalProfit,
+                profitPercent,
+                todayRevenue,
+                todayOrders: todayOrders.length,
+                newMembersToday: todayUsers,
+                successRate,
+                pendingCount: pendingOrders.length,
+                failedCount: failedOrders.length,
+                totalUsers: userCount,
+            },
+            chart: {
+                labels: chartLabels,
+                values: chartLabels.map(k => chartData[k]),
+            },
+            topGames,
+            recentOrders: allOrders.slice(0, 20).map(o => ({
+                order_id: o.id.toString(),
+                uid: o.uid,
+                email: o.email,
+                game: o.gameName,
+                pkg: o.packageName,
+                amount: Number(o.finalPrice ?? o.packagePrice),
+                method: o.paymentMethod ?? 'unknown',
+                status: o.status,
+                created_at: o.createdAt,
+            })),
+        };
+    }
+
+    async getPublicStats() {
+        const completedOrdersCount = await this.prisma.order.count({
+            where: { status: 'completed' },
+        });
+        const completedTopupsCount = await this.prisma.topupTransaction.count({
+            where: { status: 'completed' },
+        });
+        return {
+            total_success: completedOrdersCount + completedTopupsCount,
         };
     }
 }

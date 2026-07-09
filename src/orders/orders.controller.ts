@@ -10,15 +10,17 @@ import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ExternalGameService } from '../games/external-game.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { CouponsService } from '../coupons/coupons.service';
 
 @ApiTags('Orders')
 @ApiBearerAuth()
 @Controller('orders')
 export class OrdersController {
     constructor(
-        private ordersService: OrdersService,
-        private externalGameService: ExternalGameService,
-        private prisma: PrismaService,
+        private readonly ordersService: OrdersService,
+        private readonly externalGameService: ExternalGameService,
+        private readonly prisma: PrismaService,
+        private readonly couponsService: CouponsService,
     ) {}
 
     // ─── User endpoints ──────────────────────────────────────────────────────
@@ -48,10 +50,16 @@ export class OrdersController {
         @Query('gameId') gameId?: string,
     ) {
         return this.ordersService.findAllForAdmin({
-            page:  parseInt(page, 10),
-            limit: parseInt(limit, 10),
+            page:  Number.parseInt(page, 10),
+            limit: Number.parseInt(limit, 10),
             status, search, gameId,
         });
+    }
+
+    @Get('admin/stats')
+    @UseGuards(JwtAuthGuard, AdminGuard)
+    async getAdminDashboardStats(@Query('days') days = '7') {
+        return this.ordersService.getAdminDashboardStats(parseInt(days, 10));
     }
 
     @Get('admin/revenue-by-game')
@@ -105,6 +113,11 @@ export class OrdersController {
 
     // ─── Shared ──────────────────────────────────────────────────────────────
 
+    @Get('public/stats')
+    async getPublicStats() {
+        return this.ordersService.getPublicStats();
+    }
+
     @Get('prepare-payment')
     @UseGuards(JwtAuthGuard)
     async preparePayment(@Req() req: any) {
@@ -121,8 +134,10 @@ export class OrdersController {
     }
 
     @Post()
+    @UseGuards(JwtAuthGuard)
     async create(@Req() req: any, @Body() dto: CreateOrderDto) {
-        const email = dto.email || req.user?.email;
+        const userId = req.user.id;
+        const email = dto.email || req.user.email;
         if (!email) throw new BadRequestException('Email is required for order creation');
 
         let gameId: bigint | null = null;
@@ -136,7 +151,7 @@ export class OrdersController {
         let packageId: bigint | null = null;
         let externalPackageSku: string | null = null;
         if (typeof dto.packageId === 'string') {
-            packageId = null;
+            // redundant assignment removed
         } else if (typeof dto.packageId === 'number' || typeof dto.packageId === 'bigint') {
             const packageIdBig = BigInt(dto.packageId);
             const packageExists = await this.prisma.gamePackage.findUnique({
@@ -147,12 +162,46 @@ export class OrdersController {
                 packageId = packageIdBig;
             } else {
                 externalPackageSku = `${dto.packageName}_${dto.packageId}`.toLowerCase().replace(/\s+/g, '_');
-                packageId = null;
+                // redundant assignment removed
             }
         }
 
-        return this.ordersService.create({
-            userId:           req.user?.id || null,
+        // Validate coupon if provided
+        let discountAmount = 0;
+        let finalPrice = dto.packagePrice;
+        let couponCode: string | null = null;
+
+        if (dto.couponCode) {
+            try {
+                const validation = await this.couponsService.validateCoupon({
+                    code: dto.couponCode,
+                    gameId: gameId ? Number(gameId) : undefined,
+                    packageId: packageId ? Number(packageId) : undefined,
+                    amount: dto.packagePrice
+                }, userId || BigInt(1)); // fallback to 1 (default user ID) if guest
+
+                if (validation && validation.success && validation.data) {
+                    couponCode = validation.data.code;
+                    discountAmount = validation.data.discountAmount;
+                    finalPrice = validation.data.finalAmount;
+                } else {
+                    throw new BadRequestException(validation.message || 'คูปองไม่ถูกต้อง');
+                }
+            } catch (couponErr: any) {
+                throw new BadRequestException(couponErr.message || 'เกิดข้อผิดพลาดในการตรวจสอบคูปอง');
+            }
+        }
+
+        // Calculate VAT on top of the final price (after discount)
+        const vatSetting = await this.prisma.systemSetting.findUnique({
+            where: { key: 'payment_vat_rate' },
+        });
+        const vatRate = vatSetting ? parseFloat(vatSetting.value) ?? 7.0 : 7.0;
+        const vatAmountVal = finalPrice * (vatRate / 100);
+        finalPrice = Math.round((finalPrice + vatAmountVal) * 100) / 100;
+
+        const order = await this.ordersService.create({
+            userId:           userId,
             gameId,
             externalGameSlug,
             gameName:         dto.gameName,
@@ -163,6 +212,17 @@ export class OrdersController {
             uid:              dto.uid,
             email,
             paymentMethod:    dto.paymentMethod || undefined,
+            couponCode,
+            discountAmount,
+            finalPrice,
         });
+
+        return {
+            ...order,
+            id: order.id.toString(),
+            userId: order.userId?.toString() || null,
+            gameId: order.gameId?.toString() || null,
+            packageId: order.packageId?.toString() || null,
+        };
     }
 }

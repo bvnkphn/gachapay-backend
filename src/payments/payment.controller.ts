@@ -11,12 +11,36 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AdminGuard } from '../auth/guards/admin.guard';
 import { PaymentService } from './payment.service';
 
 @ApiTags('Payments')
 @Controller('payments')
 export class PaymentController {
     constructor(private paymentService: PaymentService) { }
+
+    @Get('admin/settings')
+    @UseGuards(JwtAuthGuard, AdminGuard)
+    async getAdminSettings() {
+        return this.paymentService.getAdminSettings();
+    }
+
+    @Post('admin/settings')
+    @UseGuards(JwtAuthGuard, AdminGuard)
+    async saveAdminSettings(@Body() body: { settings: any }) {
+        return this.paymentService.saveAdminSettings(body.settings);
+    }
+
+    @Get('admin/logs')
+    @UseGuards(JwtAuthGuard, AdminGuard)
+    async getAdminLogs() {
+        return this.paymentService.getAdminLogs();
+    }
+
+    @Get('active-methods')
+    async getActiveMethods() {
+        return this.paymentService.getActiveMethods();
+    }
 
     /**
      * Process Gacha Wallet Payment
@@ -47,14 +71,15 @@ export class PaymentController {
     @Post('generate-qr')
     @UseGuards(JwtAuthGuard)
     async generateQRCode(
+        @Req() req: any,
         @Body()
         dto: {
             orderId: number;
             amount: number;
-            method: 'promptpay' | 'truemoney';
+            method: 'promptpay' | 'truemoney' | 'bank_transfer';
         },
     ) {
-        if (!['promptpay', 'truemoney'].includes(dto.method)) {
+        if (!['promptpay', 'truemoney', 'bank_transfer'].includes(dto.method)) {
             throw new BadRequestException('Invalid payment method');
         }
 
@@ -62,6 +87,7 @@ export class PaymentController {
             dto.orderId,
             dto.amount,
             dto.method,
+            req.user.id,
         );
     }
 
@@ -70,7 +96,6 @@ export class PaymentController {
      * GET /api/payments/check-status?orderId=123
      */
     @Get('check-status')
-    @UseGuards(JwtAuthGuard)
     async checkPaymentStatus(@Query('orderId') orderId: string) {
         if (!orderId) {
             throw new BadRequestException('Order ID is required');
@@ -100,5 +125,22 @@ export class PaymentController {
             dto.amount,
             BigInt(dto.userId),
         );
+    }
+
+    @Get('vat')
+    async getPublicVatRate() {
+        return this.paymentService.getVatRate();
+    }
+
+    @Get('admin/vat')
+    @UseGuards(JwtAuthGuard, AdminGuard)
+    async getVatRate() {
+        return this.paymentService.getVatRate();
+    }
+
+    @Post('admin/vat')
+    @UseGuards(JwtAuthGuard, AdminGuard)
+    async saveVatRate(@Body() body: { vatRate: number }) {
+        return this.paymentService.saveVatRate(body.vatRate);
     }
 }

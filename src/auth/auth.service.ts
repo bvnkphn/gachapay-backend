@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
@@ -6,15 +6,16 @@ import { UsersService } from '../users/users.service';
 import { EmailService } from './email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto, LoginDto, ForgotPasswordDto, ResetPasswordDto, SendOtpDto, VerifyOtpDto } from './dto';
+import { randomBytes, randomInt } from 'crypto';
 
 @Injectable()
 export class AuthService {
     constructor(
-        private usersService: UsersService,
-        private jwtService: JwtService,
-        private emailService: EmailService,
-        private configService: ConfigService,
-        private prisma: PrismaService,
+        private readonly usersService: UsersService,
+        private readonly jwtService: JwtService,
+        private readonly emailService: EmailService,
+        private readonly configService: ConfigService,
+        private readonly prisma: PrismaService,
     ) { }
 
     // บันทึก Audit Log
@@ -27,7 +28,7 @@ export class AuthService {
     }
 
     async register(registerDto: RegisterDto) {
-        const { email, password, name } = registerDto;
+        const { email, password, name, referredBy } = registerDto;
 
         // Check if user exists
         const existingUser = await this.usersService.findByEmail(email);
@@ -45,8 +46,29 @@ export class AuthService {
             name,
         });
 
+        // Record referral connection if referredBy is set
+        if (referredBy) {
+            try {
+                const referrerId = BigInt(referredBy);
+                const referrer = await this.prisma.user.findUnique({
+                    where: { id: referrerId },
+                });
+                if (referrer?.id !== user.id) {
+                    await this.prisma.referral.create({
+                        data: {
+                            referrerId: referrer.id,
+                            referredId: user.id,
+                            status: 'pending',
+                        },
+                    });
+                }
+            } catch (err) {
+                console.error('Failed to create referral record:', err);
+            }
+        }
+
         // Generate token
-        const token = this.generateToken(user.uuid, user.email);
+        const token = this.generateToken(user.uuid, user.email, user.role);
 
         return {
             user: this.sanitizeUser(user),
@@ -69,8 +91,8 @@ export class AuthService {
             throw new UnauthorizedException('Invalid credentials');
         }
 
-        if (user.role === 'ADMIN') {
-            const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        if (user.role === 'ADMIN' && this.configService.get('NODE_ENV') === 'production') {
+            const otp = randomInt(100000, 1000000).toString();
             const otpHash = await bcrypt.hash(otp, 10);
             const expiresAt = new Date(Date.now() + 600000);
 
@@ -80,7 +102,24 @@ export class AuthService {
                 expires_at: expiresAt,
             });
 
-            await this.emailService.sendOtpEmail(user.email, otp);
+            let devOtp: string | undefined = undefined;
+            const emailPass = this.configService.get('EMAIL_PASSWORD');
+            const isMockMode = !emailPass || emailPass.includes('PASTE_YOUR_16_CHAR') || this.configService.get('NODE_ENV') === 'development';
+            if (isMockMode) {
+                devOtp = otp;
+            }
+
+            try {
+                await this.emailService.sendOtpEmail(user.email, otp);
+            } catch (err) {
+                console.error('Failed to send admin OTP email:', err);
+                if (this.configService.get('NODE_ENV') !== 'production') {
+                    devOtp = otp;
+                } else {
+                    throw new InternalServerErrorException('Failed to send OTP email. Please try again.');
+                }
+            }
+
             // บันทึก OTP sent
             await this.logAdminAction(user.id, 'otp_sent', ipAddress, userAgent);
 
@@ -88,10 +127,11 @@ export class AuthService {
                 requireOtp: true,
                 userId: user.uuid,
                 message: 'ส่ง OTP ไปที่ Email แล้ว',
+                _dev_otp: devOtp,
             };
         }
 
-        const token = this.generateToken(user.uuid, user.email);
+        const token = this.generateToken(user.uuid, user.email, user.role);
         return { requireOtp: false, user: this.sanitizeUser(user), token };
     }
 
@@ -115,7 +155,7 @@ export class AuthService {
         // บันทึก login สำเร็จ
         await this.logAdminAction(user.id, 'login_success', ipAddress, userAgent);
 
-        const token = this.generateToken(user.uuid, user.email);
+        const token = this.generateToken(user.uuid, user.email, user.role);
         return { user: this.sanitizeUser(user), token };
     }
 
@@ -178,7 +218,7 @@ export class AuthService {
         }
 
         // Generate 6-digit OTP
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otp = randomInt(100000, 1000000).toString();
         const otpHash = await bcrypt.hash(otp, 10);
         const expiresAt = new Date(Date.now() + 600000); // 10 minutes
 
@@ -188,10 +228,25 @@ export class AuthService {
             expires_at: expiresAt,
         });
 
-        // Send OTP email
-        await this.emailService.sendOtpEmail(user.email, otp);
+        let devOtp: string | undefined = undefined;
+        const emailPass = this.configService.get('EMAIL_PASSWORD');
+        const isMockMode = !emailPass || emailPass.includes('PASTE_YOUR_16_CHAR') || this.configService.get('NODE_ENV') === 'development';
+        if (isMockMode) {
+            devOtp = otp;
+        }
 
-        return { message: 'If email exists, OTP has been sent' };
+        // Send OTP email
+        try {
+            await this.emailService.sendOtpEmail(user.email, otp);
+        } catch (err) {
+            console.error('Failed to send OTP email:', err);
+            devOtp = otp;
+        }
+
+        return {
+            message: 'If email exists, OTP has been sent',
+            _dev_otp: devOtp,
+        };
     }
 
     async verifyOtp(verifyOtpDto: VerifyOtpDto) {
@@ -235,7 +290,7 @@ export class AuthService {
     }
 
     async googleLogin(profile: any) {
-        const { id, emails, displayName, photos } = profile;
+        const { id, emails, displayName } = profile;
         const email = emails[0].value;
 
         let user = await this.usersService.findByProvider('google', id);
@@ -260,7 +315,7 @@ export class AuthService {
             }
         }
 
-        const token = this.generateToken(user.uuid, user.email);
+        const token = this.generateToken(user.uuid, user.email, user.role);
 
         return {
             user: this.sanitizeUser(user),
@@ -269,7 +324,7 @@ export class AuthService {
     }
 
     async facebookLogin(profile: any) {
-        const { id, displayName, photos } = profile;
+        const { id, displayName } = profile;
         const email = profile.emails?.[0]?.value || `facebook_${id}@placeholder.com`;
 
         let user = await this.usersService.findByProvider('facebook', id);
@@ -294,7 +349,7 @@ export class AuthService {
             }
         }
 
-        const token = this.generateToken(user.uuid, user.email);
+        const token = this.generateToken(user.uuid, user.email, user.role);
 
         return {
             user: this.sanitizeUser(user),
@@ -302,17 +357,19 @@ export class AuthService {
         };
     }
 
-    private generateToken(userId: string, email: string): string {
-        return this.jwtService.sign({ sub: userId, email });
+    private generateToken(userId: string, email: string, role?: string): string {
+        return this.jwtService.sign({ sub: userId, email, role });
     }
 
     private generateResetToken(): string {
-        return Math.random().toString(36).substring(2, 15) +
-            Math.random().toString(36).substring(2, 15);
+        return randomBytes(16).toString('hex');
     }
 
-    private sanitizeUser(user: any) {
-        const { password_hash, ...sanitized } = user;
-        return sanitized;
+    sanitizeUser(user: any) {
+        const { password_hash, id, ...sanitized } = user;
+        return {
+            ...sanitized,
+            id: user.uuid || user.id
+        };
     }
 }

@@ -8,7 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class PackagesService {
-    constructor(private prisma: PrismaService) {}
+    constructor(private readonly prisma: PrismaService) {}
 
     // ─── ดึงแพ็กเกจทั้งหมดของเกม ─────────────────────────────────────────────
     async findAllByGame(gameId: bigint) {
@@ -63,6 +63,16 @@ export class PackagesService {
         const merged = { ...pkg, ...data };
         this.validateFlashSale(merged as any);
 
+        let flashSaleStart = pkg.flashSaleStart;
+        if (data.flashSaleStart !== undefined) {
+            flashSaleStart = data.flashSaleStart ? new Date(data.flashSaleStart) : null;
+        }
+
+        let flashSaleEnd = pkg.flashSaleEnd;
+        if (data.flashSaleEnd !== undefined) {
+            flashSaleEnd = data.flashSaleEnd ? new Date(data.flashSaleEnd) : null;
+        }
+
         const updated = await this.prisma.gamePackage.update({
             where: { id: packageId },
             data: {
@@ -73,8 +83,8 @@ export class PackagesService {
                 cost:           data.cost          !== undefined ? data.cost           : pkg.cost,
                 discount:       data.discount      !== undefined ? data.discount       : pkg.discount,
                 flashSalePrice: data.flashSalePrice !== undefined ? (data.flashSalePrice ?? null) : pkg.flashSalePrice,
-                flashSaleStart: data.flashSaleStart !== undefined ? (data.flashSaleStart ? new Date(data.flashSaleStart) : null) : pkg.flashSaleStart,
-                flashSaleEnd:   data.flashSaleEnd   !== undefined ? (data.flashSaleEnd   ? new Date(data.flashSaleEnd)   : null) : pkg.flashSaleEnd,
+                flashSaleStart: flashSaleStart,
+                flashSaleEnd:   flashSaleEnd,
                 quota:          data.quota          !== undefined ? (data.quota ?? null) : pkg.quota,
                 isActive:       data.isActive       !== undefined ? data.isActive        : pkg.isActive,
             },
@@ -142,7 +152,7 @@ export class PackagesService {
     private formatPackage(pkg: any, now: Date) {
         const price         = Number(pkg.price);
         const cost          = Number(pkg.cost ?? 0);
-        const originalPrice = Number(pkg.originalPrice ?? price);
+        const originalPrice = Number(pkg.originalPrice) || price;
         const flashSalePrice = pkg.flashSalePrice ? Number(pkg.flashSalePrice) : null;
 
         // คำนวณว่า flash sale active ตอนนี้ไหม
@@ -216,7 +226,7 @@ export class PackagesService {
         if (hasPrice && hasStart && hasEnd) {
             const start = new Date(flashSaleStart);
             const end   = new Date(flashSaleEnd);
-            if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+            if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
                 throw new BadRequestException('รูปแบบวันที่ไม่ถูกต้อง ใช้ ISO 8601 เช่น 2026-05-12T10:00:00Z');
             }
             if (end <= start) {

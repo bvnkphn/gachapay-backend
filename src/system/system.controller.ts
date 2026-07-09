@@ -9,7 +9,7 @@ import { AdminGuard } from '../auth/guards/admin.guard';
 @UseGuards(JwtAuthGuard, AdminGuard)
 @Controller('system')
 export class SystemController {
-  constructor(private systemService: SystemService) {}
+  constructor(private readonly systemService: SystemService) {}
 
   // GET /system/status — ดูสถานะ maintenance + notification settings
   @Get('status')

@@ -8,13 +8,15 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 
 # Install the application dependencies
-RUN npm install
+RUN npm ci --ignore-scripts
 
 # Copy the rest of the application files
 COPY . .
 
 # Generate Prisma
-RUN npx prisma generate
+ENV DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres"
+ENV DIRECT_URL="postgresql://postgres:postgres@localhost:5432/postgres"
+RUN npx --no-install prisma generate
 
 # Build the NestJS application
 RUN npm run build

@@ -1,6 +1,7 @@
 import { Controller, Post, Body, Get, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { GameImportService } from './game-import.service';
+import { ExternalGameService } from './external-game.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
 
@@ -31,7 +32,24 @@ interface ExternalGame {
 @UseGuards(JwtAuthGuard, AdminGuard)
 @Controller('games')
 export class GameImportController {
-  constructor(private gameImportService: GameImportService) {}
+  constructor(
+    private readonly gameImportService: GameImportService,
+    private readonly externalGameService: ExternalGameService,
+  ) {}
+
+  /**
+   * Import all games directly from the external API provider (Admin only)
+   */
+  @Post('import-external')
+  async importExternal() {
+    const externalGames = await this.externalGameService.fetchGames();
+    await this.gameImportService.importGames(externalGames);
+    return {
+      success: true,
+      message: `Successfully imported ${externalGames.length} games from external API`,
+      count: externalGames.length,
+    };
+  }
 
   /**
    * Import games from external API data (Admin only)

@@ -1,15 +1,15 @@
 import { Controller, Post, Body, Get, UseGuards, Req, Res, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { AuthGuard } from '@nestjs/passport';
 import { Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto, LoginDto, ForgotPasswordDto, ResetPasswordDto, SendOtpDto, VerifyOtpDto, VerifyAdminOtpDto } from './dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { DevOrGoogleAuthGuard, DevOrFacebookAuthGuard } from './guards/dev-oauth.guard';
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-    constructor(private authService: AuthService) { }
+    constructor(private readonly authService: AuthService) { }
 
     @Post('register')
     async register(@Body() registerDto: RegisterDto) {
@@ -51,15 +51,17 @@ export class AuthController {
     }
 
     @Get('google')
-    @UseGuards(AuthGuard('google'))
-    async googleAuth() {
-        // Initiates Google OAuth flow
+    @UseGuards(DevOrGoogleAuthGuard)
+    async googleAuth(@Req() req, @Res() res: Response) {
+        if (req.user) {
+            return res.redirect('/api/auth/google/callback');
+        }
     }
 
     @Get('google/callback')
-    @UseGuards(AuthGuard('google'))
+    @UseGuards(DevOrGoogleAuthGuard)
     async googleAuthCallback(@Req() req, @Res() res: Response) {
-        const { user, token } = await this.authService.googleLogin(req.user);
+        const { token } = await this.authService.googleLogin(req.user);
 
         // Redirect to frontend with token
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
@@ -67,15 +69,17 @@ export class AuthController {
     }
 
     @Get('facebook')
-    @UseGuards(AuthGuard('facebook'))
-    async facebookAuth() {
-        // Initiates Facebook OAuth flow
+    @UseGuards(DevOrFacebookAuthGuard)
+    async facebookAuth(@Req() req, @Res() res: Response) {
+        if (req.user) {
+            return res.redirect('/api/auth/facebook/callback');
+        }
     }
 
     @Get('facebook/callback')
-    @UseGuards(AuthGuard('facebook'))
+    @UseGuards(DevOrFacebookAuthGuard)
     async facebookAuthCallback(@Req() req, @Res() res: Response) {
-        const { user, token } = await this.authService.facebookLogin(req.user);
+        const { token } = await this.authService.facebookLogin(req.user);
 
         // Redirect to frontend with token
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
@@ -85,6 +89,6 @@ export class AuthController {
     @Get('me')
     @UseGuards(JwtAuthGuard)
     async getProfile(@Req() req) {
-        return req.user;
+        return this.authService.sanitizeUser(req.user);
     }
 }

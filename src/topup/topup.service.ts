@@ -3,24 +3,53 @@ import {
     NotFoundException,
     ConflictException,
 } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTopupDto } from './dto/create-topup.dto';
+import { ApiCreditService } from '../api-credit/api-credit.service';
 
 const TOPUP_EXPIRE_MINUTES = 15;
 
 @Injectable()
 export class TopupService {
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private apiCreditService: ApiCreditService,
+    ) { }
 
     async getMethods() {
-        return this.prisma.paymentMethod.findMany({
+        const methods = await this.prisma.paymentMethod.findMany({
             where: { isActive: true },
             select: { id: true, code: true, name: true, icon: true, color: true },
             orderBy: { id: 'asc' },
         });
+
+        const settingsSetting = await this.prisma.systemSetting.findUnique({
+            where: { key: 'payment_gateway_settings' },
+        });
+
+        let settings: any[] = [];
+        if (settingsSetting) {
+            try {
+                settings = JSON.parse(settingsSetting.value);
+            } catch (err) {}
+        }
+
+        return methods.map((m) => {
+            const config = settings.find((s: any) => s.id === m.code);
+            return {
+                id: m.id.toString(),
+                code: m.code,
+                name: m.name,
+                icon: m.icon,
+                color: m.color,
+                fee: config ? Number(config.fee) : 0,
+            };
+        });
     }
 
     async getTransactions(userId: bigint, status?: string, limit = 10, offset = 0) {
+        await this.expireStaleTransactions();
         const where: any = { userId };
         if (status) where.status = status;
 
@@ -101,12 +130,35 @@ export class TopupService {
 
     // DEV: simulate payment complete → update balance + points + tier
     async simulateComplete(referenceId: string, userId: bigint) {
-        const tx = await this.prisma.topupTransaction.findUnique({ where: { referenceId } });
+        const tx = await this.prisma.topupTransaction.findUnique({
+            where: { referenceId },
+            include: { method: true },
+        });
         if (!tx || tx.userId !== userId) throw new NotFoundException('Transaction not found');
-        if (tx.status !== 'pending') throw new ConflictException(`Transaction is already '${tx.status}'`);
+        if (tx.status !== 'pending' && tx.status !== 'awaiting_review') {
+            throw new ConflictException(`Transaction is already '${tx.status}'`);
+        }
 
-        const amount = Number(tx.amount);
-        const pointsEarned = Math.floor(amount); // 1 บาท = 1 point
+        const settingsSetting = await this.prisma.systemSetting.findUnique({
+            where: { key: 'payment_gateway_settings' },
+        });
+        const vatSetting = await this.prisma.systemSetting.findUnique({
+            where: { key: 'payment_vat_rate' },
+        });
+
+        let settings: any[] = [];
+        if (settingsSetting) {
+            try {
+                settings = JSON.parse(settingsSetting.value);
+            } catch (err) {}
+        }
+
+        const config = settings.find((s: any) => s.id === tx.method?.code);
+        const feePercent = config ? Number(config.fee) : 0;
+        const vatPercent = 0; // Top-up transactions are VAT-exempt (no VAT deduction when buying coins)
+
+        const netAmount = Number(tx.amount) / ((1 + feePercent / 100) * (1 + vatPercent / 100));
+        const pointsEarned = Math.floor(netAmount); // 1 บาท = 1 point
 
         // ดึง point ปัจจุบันก่อน
         const user = await this.prisma.user.findUnique({
@@ -116,20 +168,91 @@ export class TopupService {
         const newPoints = (user?.point_balance ?? 0) + pointsEarned;
         const newTier = this.calculateTier(newPoints);
 
-        const [updated] = await this.prisma.$transaction([
-            this.prisma.topupTransaction.update({
+        const updated = await this.prisma.$transaction(async (txPrisma) => {
+            // Check if referenceId follows the pattern METHOD_ORDERID_TIMESTAMP to auto-complete the order
+            const parts = referenceId.split('_');
+            if (parts.length >= 3) {
+                const orderIdStr = parts[1];
+                try {
+                    const orderId = BigInt(orderIdStr);
+                    const order = await txPrisma.order.findUnique({ 
+                        where: { id: orderId },
+                        include: { package: true },
+                    });
+                    if (order) {
+                        const updatedOrder = await txPrisma.order.update({
+                            where: { id: orderId },
+                            data: { status: 'completed', paymentMethod: parts[0].toLowerCase(), updatedAt: new Date() },
+                        });
+
+                        if (updatedOrder.couponCode) {
+                            try {
+                                const coupon = await txPrisma.coupon.findUnique({ where: { code: updatedOrder.couponCode } });
+                                if (coupon) {
+                                    await txPrisma.couponUsage.create({
+                                        data: {
+                                            couponId: coupon.id,
+                                            userId: updatedOrder.userId,
+                                            orderId: updatedOrder.id,
+                                            usedAmount: updatedOrder.packagePrice,
+                                            discountAmount: updatedOrder.discountAmount,
+                                        }
+                                    });
+                                    await txPrisma.coupon.update({
+                                        where: { id: coupon.id },
+                                        data: { currentUsageCount: { increment: 1 } },
+                                    });
+                                }
+                            } catch (err) {
+                                console.error("Failed to apply coupon on simulateComplete:", err);
+                            }
+                        }
+
+                        // Deduct API credit from 24PaySeller provider
+                        try {
+                            const cost = order.package?.cost 
+                                ? Number(order.package.cost) 
+                                : Number(order.packagePrice);
+                            await this.apiCreditService.deductCredit(
+                                '24payseller',
+                                cost,
+                                `หักเครดิตสำหรับออเดอร์ #${orderId} (แพ็คเกจ: ${order.packageName})`,
+                                orderId
+                            );
+                        } catch (err) {
+                            console.error('Failed to deduct API credit on simulateComplete:', err);
+                        }
+                    }
+                } catch (err) {}
+            }
+
+            const updatedTx = await txPrisma.topupTransaction.update({
                 where: { referenceId },
                 data: { status: 'completed', completedAt: new Date() },
-            }),
-            this.prisma.user.update({
+            });
+
+            // Always award points (EXP) for completed topup transactions,
+            // even if they are associated with an order. Only increment the
+            // wallet balance for standalone top-ups (not tied to an order).
+            const userUpdateData: any = {
+                point_balance: newPoints,
+                tier: newTier,
+            };
+
+            if (!tx.orderId) {
+                userUpdateData.wallet_balance = { increment: netAmount };
+            }
+
+            await txPrisma.user.update({
                 where: { id: userId },
-                data: {
-                    wallet_balance: { increment: tx.amount },
-                    point_balance: newPoints,
-                    tier: newTier,
-                },
-            }),
-        ]);
+                data: userUpdateData,
+            });
+
+            return updatedTx;
+        });
+
+        // Trigger referral reward processing
+        await this.prisma.processReferralReward(userId);
 
         return {
             reference_id: updated.referenceId,
@@ -145,7 +268,9 @@ export class TopupService {
     async simulateCancel(referenceId: string, userId: bigint) {
         const tx = await this.prisma.topupTransaction.findUnique({ where: { referenceId } });
         if (!tx || tx.userId !== userId) throw new NotFoundException('Transaction not found');
-        if (tx.status !== 'pending') throw new ConflictException(`Transaction is already '${tx.status}'`);
+        if (tx.status !== 'pending' && tx.status !== 'awaiting_review') {
+            throw new ConflictException(`Transaction is already '${tx.status}'`);
+        }
 
         const updated = await this.prisma.topupTransaction.update({
             where: { referenceId },
@@ -155,16 +280,41 @@ export class TopupService {
         return { reference_id: updated.referenceId, status: updated.status };
     }
 
+    // User submits bank transfer slip for admin review
+    async submitSlip(referenceId: string, userId: bigint, slipUrl: string, bankCode?: string) {
+        const tx = await this.prisma.topupTransaction.findUnique({ where: { referenceId } });
+        if (!tx || tx.userId !== userId) throw new NotFoundException('Transaction not found');
+        if (tx.status !== 'pending' && tx.status !== 'awaiting_review') {
+            throw new ConflictException(`Transaction is already '${tx.status}'`);
+        }
+
+        const updated = await this.prisma.topupTransaction.update({
+            where: { referenceId },
+            data: {
+                slipUrl,
+                bankCode: bankCode ?? null,
+                status: 'awaiting_review',
+            },
+        });
+
+        return {
+            reference_id: updated.referenceId,
+            status: updated.status,
+            slip_url: updated.slipUrl,
+            bank_code: updated.bankCode,
+        };
+    }
+
     private calculateTier(points: number): string {
-        if (points >= 50000) return 'PLATINUM';
-        if (points >= 10000) return 'GOLD';
-        if (points >= 1000) return 'SILVER';
-        return 'BRONZE';
+        if (points >= 1000000) return 'EMERALD';
+        if (points >= 500000) return 'PLATINUM';
+        if (points >= 100000) return 'BRONZE';
+        return 'MEMBER';
     }
 
     private generateReferenceId(): string {
         const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        const rand = Math.random().toString(36).substring(2, 7).toUpperCase();
+        const rand = randomBytes(3).toString('hex').substring(0, 5).toUpperCase();
         return `TP-${date}-${rand}`;
     }
 }

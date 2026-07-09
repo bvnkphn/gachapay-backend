@@ -10,7 +10,7 @@ import { AdminGuard } from '../auth/guards/admin.guard';
 @ApiTags('FAQ')
 @Controller('faq')
 export class FaqController {
-  constructor(private faqService: FaqService) {}
+  constructor(private readonly faqService: FaqService) {}
 
   // GET /faq?category=topup — public
   @Get()

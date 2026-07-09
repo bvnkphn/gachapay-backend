@@ -10,14 +10,38 @@ import { CouponsService } from '../coupons/coupons.service';
 @Injectable()
 export class TopupValidationService {
     constructor(
-        private prisma: PrismaService,
-        private couponsService: CouponsService,
+        private readonly prisma: PrismaService,
+        private readonly couponsService: CouponsService,
     ) {}
 
     /**
      * ตรวจสอบข้อมูล Top-up ทั้งหมด
      * Validate all top-up information
      */
+    private async validateGameAndPackage(gameId: number, packageId: number) {
+        const game = await this.prisma.game.findUnique({
+            where: { id: BigInt(gameId) },
+            include: { packages: true },
+        });
+
+        if (!game) {
+            return { valid: false as const, error: 'ไม่พบเกมที่รองรับ', englishError: 'Game not found' };
+        }
+        if (!game.isActive) {
+            return { valid: false as const, error: 'เกมไม่ได้ใช้งานในขณะนี้', englishError: 'Game is not active' };
+        }
+
+        const gamePackage = game.packages.find(p => p.id === BigInt(packageId));
+        if (!gamePackage) {
+            return { valid: false as const, error: 'ไม่พบแพ็กเกจที่รองรับสำหรับเกมนี้', englishError: 'Package not found for this game' };
+        }
+        if (!gamePackage.isActive) {
+            return { valid: false as const, error: 'แพ็กเกจนี้ไม่ได้ใช้งานในขณะนี้', englishError: 'Package is not active' };
+        }
+
+        return { valid: true as const, game, gamePackage };
+    }
+
     async validateTopup(
         validateDto: ValidateTopupDto,
         userId: bigint,
@@ -27,59 +51,23 @@ export class TopupValidationService {
         const warnings: string[] = [];
 
         try {
-            // 1. ตรวจสอบว่าเกมมีอยู่
-            // 1. Validate game exists
-            const game = await this.prisma.game.findUnique({
-                where: { id: BigInt(gameId) },
-                include: { packages: true },
-            });
-
-            if (!game) {
+            const validation = await this.validateGameAndPackage(gameId, packageId);
+            if (!validation.valid) {
                 return {
                     success: false,
-                    message: 'ไม่พบเกมที่รองรับ',
-                    errors: ['Game not found'],
+                    message: validation.error,
+                    errors: [validation.englishError],
                 };
             }
 
-            if (!game.isActive) {
-                return {
-                    success: false,
-                    message: 'เกมไม่ได้ใช้งานในขณะนี้',
-                    errors: ['Game is not active'],
-                };
-            }
+            const { game, gamePackage } = validation;
 
-            // 2. ตรวจสอบว่าแพ็กเกจมีอยู่
-            // 2. Validate package exists
-            const gamePackage = game.packages.find(p => p.id === BigInt(packageId));
-
-            if (!gamePackage) {
-                return {
-                    success: false,
-                    message: 'ไม่พบแพ็กเกจที่รองรับสำหรับเกมนี้',
-                    errors: ['Package not found for this game'],
-                };
-            }
-
-            if (!gamePackage.isActive) {
-                return {
-                    success: false,
-                    message: 'แพ็กเกจนี้ไม่ได้ใช้งานในขณะนี้',
-                    errors: ['Package is not active'],
-                };
-            }
-
-            // 3. ตรวจสอบอีเมล
-            // 3. Validate email
             const emailValid = this.validateEmail(email);
             if (!emailValid) {
                 errors.push('อีเมลไม่ถูกต้อง');
                 errors.push('Invalid email format');
             }
 
-            // 4. ตรวจสอบฟิลด์ของผู้เล่น
-            // 4. Validate player fields
             const playerFieldsValidation = await this.validatePlayerFields(
                 gameId,
                 playerFields,
@@ -89,8 +77,6 @@ export class TopupValidationService {
                 errors.push(...playerFieldsValidation.errors);
             }
 
-            // 5. ตรวจสอบคูปอง (ถ้ามี)
-            // 5. Validate coupon (if provided)
             let couponData = null;
             if (couponCode) {
                 const couponValidation = await this.couponsService.validateCoupon(
@@ -105,8 +91,6 @@ export class TopupValidationService {
                 }
             }
 
-            // หากมีข้อผิดพลาด ส่งคำตอบที่ล้มเหลว
-            // If there are errors, return failed response
             if (errors.length > 0) {
                 return {
                     success: false,
@@ -116,8 +100,6 @@ export class TopupValidationService {
                 };
             }
 
-            // ถ้าสำเร็จ รวบรวมข้อมูลการตอบสนอง
-            // If successful, compile response data
             const estimatedPrice = couponData
                 ? couponData.finalAmount
                 : gamePackage.price.toNumber();
@@ -159,8 +141,12 @@ export class TopupValidationService {
      * Validate email format
      */
     private validateEmail(email: string): boolean {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        return emailRegex.test(email);
+        if (!email || typeof email !== 'string') return false;
+        const parts = email.split('@');
+        if (parts.length !== 2) return false;
+        const [local, domain] = parts;
+        if (!local || !domain || domain.indexOf('.') === -1) return false;
+        return true;
     }
 
     /**

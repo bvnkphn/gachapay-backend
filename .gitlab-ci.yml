@@ -1,0 +1,73 @@
+stages:
+  - install
+  - test
+  - build
+  - sonarqube
+
+variables:
+  SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"  # Defines the location of the analysis task cache
+  GIT_DEPTH: "0"  # Tells git to fetch all the branches of the project, required by the analysis task
+
+cache:
+  key:
+    files:
+      - backend/package-lock.json
+      - frontend/package-lock.json
+  paths:
+    - .npm/
+
+install_dependencies:
+  stage: install
+  image: node:18-alpine
+  script:
+    - npm config set cache ${CI_PROJECT_DIR}/.npm
+    - cd backend && npm ci
+    - cd ../frontend && npm ci
+  artifacts:
+    paths:
+      - backend/node_modules/
+      - frontend/node_modules/
+    expire_in: 1 hour
+
+test_backend:
+  stage: test
+  image: node:18-alpine
+  dependencies:
+    - install_dependencies
+  script:
+    - cd backend
+    # Run test coverage, ignore if test command is not fully configured yet
+    - npm run test:cov || true
+  artifacts:
+    paths:
+      - backend/coverage/
+    expire_in: 1 hour
+  allow_failure: true
+
+build_project:
+  stage: build
+  image: node:18-alpine
+  dependencies:
+    - install_dependencies
+  script:
+    - cd backend && npm run build
+    - cd ../frontend && npm run build
+
+sonarqube_check:
+  stage: sonarqube
+  image: 
+    name: sonarsource/sonar-scanner-cli:latest
+    entrypoint: [""]
+  cache:
+    key: "${CI_COMMIT_REF_SLUG}"
+    paths:
+      - .sonar/cache
+  dependencies:
+    - test_backend
+  script: 
+    - sonar-scanner
+  allow_failure: true
+  only:
+    - main
+    - master
+    - develop

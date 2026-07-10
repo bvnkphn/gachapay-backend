@@ -53,6 +53,6 @@ import { MaintenanceMiddleware } from './system/maintenance.middleware';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(MaintenanceMiddleware).forRoutes('*');
+    consumer.apply(MaintenanceMiddleware).forRoutes('*splat');
   }
 }

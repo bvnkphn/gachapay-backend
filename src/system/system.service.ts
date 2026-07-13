@@ -12,6 +12,17 @@ const KEYS = {
   NOTIFY_DAILY_REPORT:       'notify_daily_report',
 } as const;
 
+const DEFAULT_GACHA_SETTINGS = JSON.stringify([
+  { value: 5, label: '5 COINS', probability: 17.5 },
+  { value: 0, label: 'เกลือ (ไม่ได้)', probability: 10 },
+  { value: 10, label: '10 COINS', probability: 20 },
+  { value: 50, label: '50 COINS', probability: 5 },
+  { value: 0, label: 'เกลือ (ไม่ได้)', probability: 10 },
+  { value: 20, label: '20 COINS', probability: 10 },
+  { value: 5, label: '5 COINS', probability: 17.5 },
+  { value: 0, label: 'เกลือ (ไม่ได้)', probability: 10 }
+]);
+
 // External services ที่จะ ping เช็คสุขภาพ
 const EXTERNAL_SERVICES = [
   { id: 'external_api',  label: 'External Game API', url: 'https://x.24payseller.com/products/list' },
@@ -56,6 +67,11 @@ export class SystemService {
         lowApiBalance:    settings[KEYS.NOTIFY_LOW_BALANCE]   === 'true',
         dailyReport:      settings[KEYS.NOTIFY_DAILY_REPORT]  === 'true',
       },
+      referral: {
+        rewardAmount: Number.parseInt(settings['referral_reward_amount'] ?? '10'),
+        minSpend: Number.parseInt(settings['referral_min_spend'] ?? '100'),
+      },
+      gacha: JSON.parse(settings['gacha_settings'] ?? DEFAULT_GACHA_SETTINGS)
     };
   }
 
@@ -83,6 +99,26 @@ export class SystemService {
     if (data.lowApiBalance     !== undefined) await this.set(KEYS.NOTIFY_LOW_BALANCE, String(data.lowApiBalance));
     if (data.dailyReport       !== undefined) await this.set(KEYS.NOTIFY_DAILY_REPORT,String(data.dailyReport));
     return { success: true, notifications: await this.getStatus().then(s => s.notifications) };
+  }
+
+  // ── PATCH /system/referral ─────────────────────────────────────
+  async setReferralSettings(data: {
+    rewardAmount?: number;
+    minSpend?: number;
+  }): Promise<any> {
+    if (data.rewardAmount !== undefined) await this.set('referral_reward_amount', String(data.rewardAmount));
+    if (data.minSpend !== undefined) await this.set('referral_min_spend', String(data.minSpend));
+    return { success: true, referral: await this.getStatus().then(s => s.referral) };
+  }
+
+  // ── PATCH /system/gacha ────────────────────────────────────────
+  async setGachaSettings(data: {
+    segments: any[];
+  }): Promise<any> {
+    if (data.segments !== undefined) {
+      await this.set('gacha_settings', JSON.stringify(data.segments));
+    }
+    return { success: true, gacha: await this.getStatus().then(s => s.gacha) };
   }
 
   // ── GET /system/api-health ─────────────────────────────────────

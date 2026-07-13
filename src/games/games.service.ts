@@ -107,30 +107,69 @@ export class GamesService {
         try {
             const game = await this.externalGameService.fetchGameBySlug(slug);
             if (!game) return null;
-            return {
-                id: game.key,
-                name: game.name,
-                slug: game.key,
-                image: this.getGameImageUrl(game.key),
-                packages: (game.items || []).map((item: any) => ({
-                    id: item.sku,
-                    name: item.name,
-                    price: Number.parseFloat(item.price) || 0,
-                })),
-                fields: (game.inputs || []).map((input: any) => ({
-                    name: input.key,
-                    label: input.title || input.key,
-                    placeholder: input.placeholder || '',
-                    type: input.type || 'text',
-                    required: true,
-                    regex: input.regex ?? null,
-                    options: (input.options || []).map((opt: any) => ({
-                        label: opt.label,
-                        value: opt.value,
-                    })),
-                })),
-            };
-        } catch { return null; }
+
+            try {
+                const created = await this.prisma.game.create({
+                    data: {
+                        name: game.name,
+                        slug: game.key,
+                        description: '',
+                        image: this.getGameImageUrl(game.key),
+                        isActive: true,
+                        packages: {
+                            create: (game.items || []).map((item: any) => ({
+                                sku: item.sku,
+                                name: item.name,
+                                price: Number.parseFloat(item.price) || 0,
+                                originalPrice: Number.parseFloat(item.price) || 0,
+                            })),
+                        },
+                        inputFields: {
+                            create: (game.inputs || []).map((input: any) => ({
+                                key: input.key,
+                                label: input.title || input.key,
+                                placeholder: input.placeholder || '',
+                                type: input.type || 'text',
+                                required: true,
+                                regex: input.regex ?? null,
+                                options: {
+                                    create: (input.options || []).map((opt: any) => ({
+                                        label: opt.label,
+                                        value: opt.value,
+                                    })),
+                                },
+                            })),
+                        },
+                    },
+                    include: {
+                        packages: true,
+                        inputFields: {
+                            include: { options: true },
+                        },
+                    },
+                });
+                return this.transformDbGame(created);
+            } catch (err) {
+                // Fallback in case of concurrent creations
+                const dbGameRetry = await this.prisma.game.findUnique({
+                    where: { slug },
+                    include: {
+                        packages: true,
+                        inputFields: {
+                            where: { isActive: true },
+                            include: { options: { where: { isActive: true } } },
+                            orderBy: { order: 'asc' },
+                        },
+                    },
+                });
+                if (dbGameRetry) {
+                    return this.transformDbGame(dbGameRetry);
+                }
+                throw err;
+            }
+        } catch (e) {
+            return null;
+        }
     }
 
     private formatImageUrl(url?: string): string {
@@ -347,7 +386,7 @@ export class GamesService {
                 };
             });
 
-            return {
+             return {
                 id: dbGame ? dbGame.id.toString() : (game.id || game.key || randomBytes(4).toString('hex')),
                 name: dbGame ? dbGame.name : game.name,
                 slug: game.key,
@@ -357,6 +396,9 @@ export class GamesService {
                 description: dbGame?.description || game.description || null,
                 isActive,
                 packages: transformedPackages,
+                startingPrice: transformedPackages.length > 0
+                    ? Math.min(...transformedPackages.map(p => p.effectivePrice))
+                    : 0,
                 fields: (game.inputs || []).map((input: any) => ({
                     name: input.key || input.name,
                     label: input.title || input.label || input.key,

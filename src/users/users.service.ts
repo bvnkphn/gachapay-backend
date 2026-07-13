@@ -299,6 +299,34 @@ export class UsersService {
             },
         });
 
+        // Get referral reward configurations
+        const rewardSetting = await this.prisma.systemSetting.findUnique({
+            where: { key: 'referral_reward_amount' },
+        });
+        const minSpendSetting = await this.prisma.systemSetting.findUnique({
+            where: { key: 'referral_min_spend' },
+        });
+        const rewardAmountSetting = Number(rewardSetting?.value || '10');
+        const minSpendSettingVal = Number(minSpendSetting?.value || '100');
+
+        // Resolve referred users spending progress
+        const referralDetails = await Promise.all(referrals.map(async (r) => {
+            const topups = await this.prisma.topupTransaction.findMany({
+                where: { userId: r.referredId, status: 'completed' },
+                select: { amount: true },
+            });
+            const totalSpent = topups.reduce((sum, tx) => sum + Number(tx.amount), 0);
+
+            return {
+                id: r.id.toString(),
+                email: maskEmail(r.referred.email),
+                joinedAt: r.referred.created_at,
+                status: r.status,
+                reward: r.rewardAmount,
+                totalSpent,
+            };
+        }));
+
         return {
             hasPurchased,
             referredBy: referralReceived ? {
@@ -306,13 +334,11 @@ export class UsersService {
                 email: maskEmail(referralReceived.referrer.email),
                 name: referralReceived.referrer.name,
             } : null,
-            referrals: referrals.map((r) => ({
-                id: r.id.toString(),
-                email: maskEmail(r.referred.email),
-                joinedAt: r.referred.created_at,
-                status: r.status,
-                reward: r.rewardAmount,
-            })),
+            referrals: referralDetails,
+            settings: {
+                rewardAmount: rewardAmountSetting,
+                minSpend: minSpendSettingVal,
+            }
         };
     }
 

@@ -27,6 +27,7 @@ async function bootstrap() {
     const frontendUrl = configService.get('FRONTEND_URL') || 'http://localhost:3000';
     const origins = frontendUrl.split(',').map(o => o.trim());
     if (!origins.includes('http://localhost:3000')) origins.push('http://localhost:3000');
+    if (!origins.includes('http://localhost:3002')) origins.push('http://localhost:3002');
     if (!origins.includes('https://gachapay-frontend.vercel.app')) origins.push('https://gachapay-frontend.vercel.app');
 
     app.enableCors({

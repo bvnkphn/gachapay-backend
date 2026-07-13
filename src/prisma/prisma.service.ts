@@ -19,33 +19,53 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             });
 
             if (referral && referral.status === 'pending') {
-                const completedCount = await this.referral.count({
-                    where: { referrerId: referral.referrerId, status: 'completed' },
+                // Get dynamic referral settings from SystemSetting
+                const rewardSetting = await this.systemSetting.findUnique({
+                    where: { key: 'referral_reward_amount' },
+                });
+                const minSpendSetting = await this.systemSetting.findUnique({
+                    where: { key: 'referral_min_spend' },
                 });
 
-                if (completedCount < 10) {
-                    await this.user.update({
-                        where: { id: referral.referrerId },
-                        data: {
-                            wallet_balance: { increment: 10 },
-                        },
+                const rewardAmount = Number(rewardSetting?.value || '10');
+                const minSpend = Number(minSpendSetting?.value || '100');
+
+                // Calculate cumulative completed topups of the referred user (buyerId)
+                const topups = await this.topupTransaction.findMany({
+                    where: { userId: buyerId, status: 'completed' },
+                    select: { amount: true },
+                });
+                const totalSpent = topups.reduce((sum, tx) => sum + Number(tx.amount), 0);
+
+                if (totalSpent >= minSpend) {
+                    const completedCount = await this.referral.count({
+                        where: { referrerId: referral.referrerId, status: 'completed' },
                     });
 
-                    await this.transaction.create({
-                        data: {
-                            userId: referral.referrerId,
-                            type: 'referral',
-                            amount: 10,
-                            description: 'โบนัสแนะนำเพื่อนสำหรับการช้อปปิ้งครั้งแรกของเพื่อน',
-                            status: 'completed',
-                        },
+                    if (completedCount < 10) {
+                        await this.user.update({
+                            where: { id: referral.referrerId },
+                            data: {
+                                wallet_balance: { increment: rewardAmount },
+                            },
+                        });
+
+                        await this.transaction.create({
+                            data: {
+                                userId: referral.referrerId,
+                                type: 'referral',
+                                amount: rewardAmount,
+                                description: `โบนัสแนะนำเพื่อนสำหรับการสะสมยอดเติมเงินของเพื่อนครบ ${minSpend} บาท`,
+                                status: 'completed',
+                            },
+                        });
+                    }
+
+                    await this.referral.update({
+                        where: { referredId: buyerId },
+                        data: { status: 'completed' },
                     });
                 }
-
-                await this.referral.update({
-                    where: { referredId: buyerId },
-                    data: { status: 'completed' },
-                });
             }
         } catch (err) {
             console.error('Error processing referral reward:', err);

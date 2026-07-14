@@ -1,6 +1,6 @@
 import {
     Controller, Post, UseInterceptors,
-    UploadedFile, BadRequestException, UseGuards,
+    UploadedFile, BadRequestException, UseGuards, Req,
 } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -8,6 +8,7 @@ import { ApiTags, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
 import { extname, join } from 'node:path';
 import { existsSync, mkdirSync } from 'node:fs';
+import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
 
@@ -50,11 +51,12 @@ export class UploadController {
             cb(null, true);
         },
     }))
-    uploadGameImage(@UploadedFile() file: Express.Multer.File) {
+    uploadGameImage(@Req() req: Request, @UploadedFile() file: Express.Multer.File) {
         if (!file) throw new BadRequestException('ไม่พบไฟล์ กรุณาแนบไฟล์รูปภาพ');
+        const baseUrl = this.getBaseUrl(req);
         return {
             success: true,
-            url: `/api/uploads/games/${file.filename}`,
+            url: `${baseUrl}/api/uploads/games/${file.filename}`,
             filename: file.filename,
             size: file.size,
             mimetype: file.mimetype,
@@ -92,14 +94,22 @@ export class UploadController {
             cb(null, true);
         },
     }))
-    uploadSlip(@UploadedFile() file: Express.Multer.File) {
+    uploadSlip(@Req() req: Request, @UploadedFile() file: Express.Multer.File) {
         if (!file) throw new BadRequestException('ไม่พบไฟล์ กรุณาแนบไฟล์สลิปการโอนเงิน');
+        const baseUrl = this.getBaseUrl(req);
         return {
             success: true,
-            url: `/api/uploads/slips/${file.filename}`,
+            url: `${baseUrl}/api/uploads/slips/${file.filename}`,
             filename: file.filename,
             size: file.size,
             mimetype: file.mimetype,
         };
+    }
+
+    private getBaseUrl(req: Request) {
+        const forwardedProto = (req.headers['x-forwarded-proto'] as string | undefined)?.split(',')[0]?.trim();
+        const protocol = forwardedProto || req.protocol;
+        const host = req.get('host') || 'localhost:3001';
+        return process.env.BACKEND_URL?.replace(/\/$/, '') || `${protocol}://${host}`;
     }
 }

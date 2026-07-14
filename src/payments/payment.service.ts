@@ -96,24 +96,29 @@ export class PaymentService {
                 id: `LOG-${t.id}`,
                 time: timeStr,
                 method: t.method?.name || t.method?.code || "Unknown",
-                methodCode: t.method?.code,
-                slipUrl: t.slipUrl,
+                methodCode: t.method?.code || "unknown",
                 type: t.orderId ? "charge.complete" : "wallet.deposit",
                 orderId: t.orderId ? `ORD-${t.orderId}` : "-",
                 amount: Number(t.amount),
                 status: t.status === "completed" ? "success" : t.status === "failed" ? "failed" : "pending",
-                latency: t.status === "failed" ? "timeout" : latency,
-                
-                // Real data fields for SelectedTopup modal:
-                reference_id: t.referenceId,
-                bank_code: t.bankCode || "-",
                 transactionStatus: t.status,
-                userEmail: t.user?.email || "-",
+                latency: t.status === "failed" ? "timeout" : latency,
+                slip_url: this.makeAbsoluteUrl(t.slipUrl),
+                bank_code: t.bankCode || null,
+                reference_id: t.referenceId,
+                admin_note: t.adminNote || null,
+                userEmail: t.user?.email || null,
                 created_at: t.createdAt.toISOString(),
                 completed_at: t.completedAt ? t.completedAt.toISOString() : null,
-                admin_note: t.adminNote || "",
             };
         });
+    }
+
+    private makeAbsoluteUrl(url: string | null) {
+        if (!url) return null;
+        if (url.startsWith('http://') || url.startsWith('https://')) return url;
+        const base = process.env.BACKEND_URL?.replace(/\/$/, '') || 'http://localhost:3001';
+        return `${base}${url.startsWith('/') ? '' : '/'}${url}`;
     }
 
     async getAdminSettings() {

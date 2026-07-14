@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { Slip2goService } from './slip2go.service';
 import { CreateTopupDto } from './dto/create-topup.dto';
 import { ApiCreditService } from '../api-credit/api-credit.service';
 
@@ -13,8 +14,9 @@ const TOPUP_EXPIRE_MINUTES = 15;
 @Injectable()
 export class TopupService {
     constructor(
-        private prisma: PrismaService,
-        private apiCreditService: ApiCreditService,
+        private readonly prisma: PrismaService,
+        private readonly apiCreditService: ApiCreditService,
+        private readonly slip2go: Slip2goService,
     ) { }
 
     async getMethods() {
@@ -76,6 +78,46 @@ export class TopupService {
                 created_at: tx.createdAt,
                 expired_at: tx.expiresAt,
                 completed_at: tx.completedAt,
+                slip_url: this.toAbsoluteUrl(tx.slipUrl),
+                bank_code: tx.bankCode,
+                admin_note: tx.adminNote,
+                method: tx.method,
+            })),
+        };
+    }
+
+    async getTransactionsForAdmin(status?: string, methodCode?: string, bankCode?: string, limit = 50, offset = 0) {
+        const where: any = {};
+        if (status) where.status = status;
+        if (methodCode) where.method = { code: methodCode };
+        if (bankCode) where.bankCode = bankCode;
+
+        const [total, items] = await Promise.all([
+            this.prisma.topupTransaction.count({ where }),
+            this.prisma.topupTransaction.findMany({
+                where,
+                orderBy: { createdAt: 'desc' },
+                take: limit,
+                skip: offset,
+                include: { method: { select: { code: true, name: true, icon: true, color: true } } },
+            }),
+        ]);
+
+        return {
+            total,
+            limit,
+            offset,
+            items: items.map((tx) => ({
+                id: tx.id.toString(),
+                reference_id: tx.referenceId,
+                amount: tx.amount,
+                status: tx.status,
+                created_at: tx.createdAt,
+                expired_at: tx.expiresAt,
+                completed_at: tx.completedAt,
+                slip_url: this.toAbsoluteUrl(tx.slipUrl),
+                bank_code: tx.bankCode,
+                admin_note: tx.adminNote,
                 method: tx.method,
             })),
         };
@@ -135,6 +177,10 @@ export class TopupService {
             include: { method: true },
         });
         if (!tx || tx.userId !== userId) throw new NotFoundException('Transaction not found');
+
+        if (tx.status === 'completed') throw new ConflictException(`Transaction is already '${tx.status}'`);
+        if (tx.status === 'failed' || tx.status === 'expired') throw new ConflictException(`Transaction cannot be completed from status '${tx.status}'`);
+
         if (tx.status !== 'pending' && tx.status !== 'awaiting_review') {
             throw new ConflictException(`Transaction is already '${tx.status}'`);
         }
@@ -282,27 +328,186 @@ export class TopupService {
 
     // User submits bank transfer slip for admin review
     async submitSlip(referenceId: string, userId: bigint, slipUrl: string, bankCode?: string) {
-        const tx = await this.prisma.topupTransaction.findUnique({ where: { referenceId } });
+        const tx = await this.prisma.topupTransaction.findUnique({ where: { referenceId }, include: { method: true } });
         if (!tx || tx.userId !== userId) throw new NotFoundException('Transaction not found');
         if (tx.status !== 'pending' && tx.status !== 'awaiting_review') {
             throw new ConflictException(`Transaction is already '${tx.status}'`);
         }
 
+        const slipUrlAbsolute = this.toAbsoluteUrl(slipUrl);
         const updated = await this.prisma.topupTransaction.update({
             where: { referenceId },
             data: {
-                slipUrl,
+                slipUrl: slipUrlAbsolute,
                 bankCode: bankCode ?? null,
                 status: 'awaiting_review',
             },
         });
 
+        // Trigger automatic verification via Slip2Go
+        // Prisma returns Decimal for numeric fields; convert to number/string first
+        const amountForVerify = typeof (tx.amount as any)?.toNumber === 'function'
+            ? (tx.amount as any).toNumber()
+            : Number(tx.amount);
+        const verifyResult = await this.slip2go.verifySlip(slipUrlAbsolute, amountForVerify, referenceId);
+        const passed = this.isSlip2GoPassed(verifyResult.data);
+        this.logSlip2GoResult(referenceId, slipUrlAbsolute, verifyResult);
+
+        if (verifyResult.ok && passed) {
+            const { updatedTx, pointsEarned, newPoints, newTier } = await this.completeTopupTransaction(tx);
+
+            return {
+                reference_id: updatedTx.referenceId,
+                status: updatedTx.status,
+                completed_at: updatedTx.completedAt,
+                slip_url: slipUrlAbsolute,
+                verification: verifyResult.data,
+                points_earned: pointsEarned,
+                new_points: newPoints,
+                new_tier: newTier,
+            };
+        }
+
+        const reason = verifyResult.data?.reason || verifyResult.data?.message || verifyResult.error || 'verification failed';
+        const failed = await this.prisma.topupTransaction.update({
+            where: { referenceId },
+            data: {
+                status: 'verification_failed',
+                adminNote: reason,
+            },
+        });
+
         return {
-            reference_id: updated.referenceId,
-            status: updated.status,
-            slip_url: updated.slipUrl,
-            bank_code: updated.bankCode,
+            reference_id: failed.referenceId,
+            status: failed.status,
+            slip_url: failed.slipUrl,
+            reason,
+            verification: verifyResult.data ?? null,
         };
+    }
+
+    async adminUpdateStatus(referenceId: string, status: 'completed' | 'failed', adminNote?: string) {
+        const tx = await this.prisma.topupTransaction.findUnique({
+            where: { referenceId },
+            include: { method: true },
+        });
+        if (!tx) throw new NotFoundException('Transaction not found');
+        if (status === 'completed') {
+            if (tx.status === 'completed') throw new ConflictException(`Transaction is already '${tx.status}'`);
+            if (tx.status === 'failed' || tx.status === 'expired') throw new ConflictException(`Transaction cannot be completed from status '${tx.status}'`);
+
+            const { updatedTx, pointsEarned, newPoints, newTier } = await this.completeTopupTransaction(tx);
+            const note = adminNote ?? tx.adminNote ?? 'Approved manually by admin';
+            await this.prisma.topupTransaction.update({ where: { referenceId }, data: { adminNote: note } });
+
+            return {
+                reference_id: updatedTx.referenceId,
+                status: updatedTx.status,
+                completed_at: updatedTx.completedAt,
+                points_earned: pointsEarned,
+                new_points: newPoints,
+                new_tier: newTier,
+                adminNote: note,
+            };
+        }
+
+        if (tx.status === 'completed') throw new ConflictException(`Transaction is already '${tx.status}'`);
+
+        const failedTx = await this.prisma.topupTransaction.update({
+            where: { referenceId },
+            data: {
+                status: 'failed',
+                adminNote: adminNote ?? tx.adminNote ?? 'Rejected by admin',
+            },
+        });
+
+        return {
+            reference_id: failedTx.referenceId,
+            status: failedTx.status,
+            adminNote: failedTx.adminNote,
+        };
+    }
+
+    private async completeTopupTransaction(tx: any) {
+        const isTrueMoney = tx.method?.code === 'truemoney';
+        const netAmount = isTrueMoney ? Math.round((Number(tx.amount) / 1.015) * 100) / 100 : Number(tx.amount);
+        const pointsEarned = Math.floor(netAmount);
+
+        const user = await this.prisma.user.findUnique({
+            where: { id: tx.userId },
+            select: { point_balance: true },
+        });
+        const newPoints = (user?.point_balance ?? 0) + pointsEarned;
+        const newTier = this.calculateTier(newPoints);
+
+        const updatedTx = await this.prisma.$transaction(async (txPrisma) => {
+            if (tx.referenceId) {
+                const parts = tx.referenceId.split('_');
+                if (parts.length >= 3) {
+                    const orderIdStr = parts[1];
+                    try {
+                        const orderId = BigInt(orderIdStr);
+                        const order = await txPrisma.order.findUnique({ where: { id: orderId } });
+                        if (order) {
+                            await txPrisma.order.update({
+                                where: { id: orderId },
+                                data: { status: 'completed', paymentMethod: parts[0].toLowerCase(), updatedAt: new Date() },
+                            });
+                        }
+                    } catch (err) {}
+                }
+            }
+
+            const updatedTx = await txPrisma.topupTransaction.update({
+                where: { referenceId: tx.referenceId },
+                data: { status: 'completed', completedAt: new Date() },
+            });
+
+            const userUpdateData: any = {
+                point_balance: newPoints,
+                tier: newTier,
+            };
+            if (!tx.orderId) {
+                userUpdateData.wallet_balance = { increment: netAmount };
+            }
+
+            await txPrisma.user.update({
+                where: { id: tx.userId },
+                data: userUpdateData,
+            });
+
+            return updatedTx;
+        });
+
+        return { updatedTx, pointsEarned, newPoints, newTier };
+    }
+
+    private toAbsoluteUrl(url: string) {
+        if (!url) return url;
+        if (url.startsWith('http://') || url.startsWith('https://')) return url;
+        const backendUrl = process.env.BACKEND_URL?.replace(/\/$/, '') || 'http://localhost:3001';
+        return `${backendUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+    }
+
+    private isSlip2GoPassed(data: any) {
+        if (!data) return false;
+        if (typeof data.passed === 'boolean') return data.passed;
+        if (typeof data.status === 'string') {
+            return ['passed', 'success', 'ok', 'completed'].includes(data.status.toLowerCase());
+        }
+        if (typeof data.result === 'string') {
+            return ['passed', 'success', 'ok', 'completed'].includes(data.result.toLowerCase());
+        }
+        return false;
+    }
+
+    private logSlip2GoResult(referenceId: string, slipUrl: string, result: any) {
+        const status = result?.status ?? 'no-status';
+        const passed = this.isSlip2GoPassed(result) ? 'passed' : 'failed';
+        console.log(`Slip2Go verify for ${referenceId} => ${passed} status=${status} url=${slipUrl}`);
+        if (result) {
+            console.log(`Slip2Go data: ${JSON.stringify(result)}`);
+        }
     }
 
     private calculateTier(points: number): string {

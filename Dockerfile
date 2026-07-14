@@ -11,7 +11,9 @@ COPY package*.json ./
 RUN npm ci --ignore-scripts
 
 # Copy the rest of the application files
-COPY . .
+COPY src ./src
+COPY prisma ./prisma
+COPY nest-cli.json tsconfig.json ./
 
 # Generate Prisma
 ENV DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres"

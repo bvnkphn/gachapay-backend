@@ -26,11 +26,6 @@ export class ReportsService {
         const from = new Date(); from.setDate(from.getDate() - 6); from.setHours(0, 0, 0, 0);
         return { from, to };
       }
-      case 'month':
-      default: {
-        const from = new Date(); from.setDate(1); from.setHours(0, 0, 0, 0);
-        return { from, to };
-      }
       case 'year': {
         const from = new Date(now.getFullYear(), 0, 1);
         return { from, to };
@@ -38,6 +33,11 @@ export class ReportsService {
       case 'custom': {
         const from = dateFrom ? new Date(dateFrom) : new Date(now.getFullYear(), now.getMonth(), 1);
         from.setHours(0, 0, 0, 0);
+        return { from, to };
+      }
+      case 'month':
+      default: {
+        const from = new Date(); from.setDate(1); from.setHours(0, 0, 0, 0);
         return { from, to };
       }
     }

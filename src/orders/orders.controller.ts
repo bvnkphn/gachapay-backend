@@ -59,7 +59,7 @@ export class OrdersController {
     @Get('admin/stats')
     @UseGuards(JwtAuthGuard, AdminGuard)
     async getAdminDashboardStats(@Query('days') days = '7') {
-        return this.ordersService.getAdminDashboardStats(parseInt(days, 10));
+        return this.ordersService.getAdminDashboardStats(Number.parseInt(days, 10));
     }
 
     @Get('admin/revenue-by-game')
@@ -196,7 +196,7 @@ export class OrdersController {
         const vatSetting = await this.prisma.systemSetting.findUnique({
             where: { key: 'payment_vat_rate' },
         });
-        const vatRate = vatSetting ? parseFloat(vatSetting.value) ?? 7.0 : 7.0;
+        const vatRate = vatSetting ? Number.parseFloat(vatSetting.value) ?? 7.0 : 7.0;
         const vatAmountVal = finalPrice * (vatRate / 100);
         finalPrice = Math.round((finalPrice + vatAmountVal) * 100) / 100;
 

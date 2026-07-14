@@ -101,7 +101,7 @@ export class PaymentController {
             throw new BadRequestException('Order ID is required');
         }
 
-        return this.paymentService.checkPaymentStatus(parseInt(orderId));
+        return this.paymentService.checkPaymentStatus(Number.parseInt(orderId, 10));
     }
 
     /**

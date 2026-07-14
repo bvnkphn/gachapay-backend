@@ -6,7 +6,7 @@ import { UsersService } from '../users/users.service';
 import { EmailService } from './email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto, LoginDto, ForgotPasswordDto, ResetPasswordDto, SendOtpDto, VerifyOtpDto } from './dto';
-import { randomBytes, randomInt } from 'crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 
 @Injectable()
 export class AuthService {

@@ -680,7 +680,7 @@ export class PaymentService {
         if (!setting) {
             return { vatRate: 7.0 };
         }
-        return { vatRate: parseFloat(setting.value) ?? 7.0 };
+        return { vatRate: Number.parseFloat(setting.value) ?? 7.0 };
     }
 
     async saveVatRate(vatRate: number) {

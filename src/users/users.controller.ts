@@ -49,8 +49,8 @@ export class UsersController {
         @Query('limit') limitStr?: string,
         @Query('offset') offsetStr?: string,
     ) {
-        const limit = limitStr ? parseInt(limitStr, 10) : 10;
-        const offset = offsetStr ? parseInt(offsetStr, 10) : 0;
+        const limit = limitStr ? Number.parseInt(limitStr, 10) : 10;
+        const offset = offsetStr ? Number.parseInt(offsetStr, 10) : 0;
         return this.usersService.getGachaSpins(req.user.uuid, limit, offset);
     }
 

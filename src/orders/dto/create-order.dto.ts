@@ -5,8 +5,8 @@ export class CreateOrderDto {
     @Transform(({ value }) => {
         // Accept both numeric IDs and string slugs
         if (typeof value === 'string') {
-            const parsed = parseInt(value, 10);
-            if (!isNaN(parsed)) return BigInt(parsed);
+            const parsed = Number.parseInt(value, 10);
+            if (!Number.isNaN(parsed)) return BigInt(parsed);
         }
         return value; // Return as-is if not numeric (e.g., slug)
     }, { toClassOnly: true })
@@ -20,8 +20,8 @@ export class CreateOrderDto {
     @Transform(({ value }) => {
         // Accept both numeric IDs and string slugs
         if (typeof value === 'string') {
-            const parsed = parseInt(value, 10);
-            if (!isNaN(parsed)) return BigInt(parsed);
+            const parsed = Number.parseInt(value, 10);
+            if (!Number.isNaN(parsed)) return BigInt(parsed);
         }
         return value;
     }, { toClassOnly: true })

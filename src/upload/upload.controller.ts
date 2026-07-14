@@ -2,7 +2,7 @@ import {
     Controller, Post, UseInterceptors,
     UploadedFile, BadRequestException, UseGuards,
 } from '@nestjs/common';
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { diskStorage } from 'multer';

@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { GamesService } from '../games/games.service';
 
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 
 @Injectable()
 export class UsersService {

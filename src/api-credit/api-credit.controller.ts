@@ -93,6 +93,6 @@ export class ApiCreditController {
     @Param('id', ParseIntPipe) id: number,
     @Query('limit') limit?: string,
   ) {
-    return this.apiCreditService.getTransactions(id, limit ? parseInt(limit) : 50);
+    return this.apiCreditService.getTransactions(id, limit ? Number.parseInt(limit, 10) : 50);
   }
 }

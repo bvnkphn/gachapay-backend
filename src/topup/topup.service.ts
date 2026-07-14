@@ -3,7 +3,7 @@ import {
     NotFoundException,
     ConflictException,
 } from '@nestjs/common';
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTopupDto } from './dto/create-topup.dto';
 import { ApiCreditService } from '../api-credit/api-credit.service';

@@ -18,7 +18,7 @@ async function main() {
     process.exit(1);
   }
 
-  const hash = await bcrypt.hash(password, 10);
+  const hash = await bcrypt.hash(adminPassword, 10);
 
   const admin = await prisma.user.upsert({
     where:  { email },

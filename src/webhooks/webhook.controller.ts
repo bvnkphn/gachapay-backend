@@ -7,9 +7,50 @@ import { ConfigService } from '@nestjs/config';
 @Controller(['webhooks', 'webhook'])
 export class WebhookController {
     constructor(
-        private paymentService: PaymentService,
-        private configService: ConfigService,
+        private readonly paymentService: PaymentService,
+        private readonly configService: ConfigService,
     ) { }
+
+    private resolveOmiseStatus(chargeStatus: string): 'completed' | 'failed' | 'pending' {
+        if (chargeStatus === 'successful') return 'completed';
+        if (chargeStatus === 'failed') return 'failed';
+        return 'pending';
+    }
+
+    /**
+     * Shared handler for PromptPay and TrueMoney webhook payloads.
+     * Both follow the same Omise event format or simulated trigger format.
+     */
+    private async handleOmiseOrSimulatedWebhook(
+        payload: any,
+        secret?: string,
+        headerSecret?: string,
+    ) {
+        this.verifyWebhookSecret(secret || headerSecret || payload.signature || payload.secret);
+
+        // If it's a real Omise webhook event
+        if (payload.object === 'event' && payload.data?.object === 'charge') {
+            const charge = payload.data;
+            const chargeId = charge.id;
+            const status = this.resolveOmiseStatus(charge.status);
+            const result = await this.paymentService.handleOmiseWebhook(chargeId, status, Number(charge.amount) / 100);
+            return { success: true, message: 'Omise webhook processed', data: result };
+        }
+
+        // Fallback for simulated trigger format
+        const referenceId = payload.referenceId || payload.transactionId;
+        const status = payload.status === 'SUCCESS' ? 'completed' : 'failed';
+        const amount = payload.amount;
+        const userId = payload.userId;
+
+        return this.handlePaymentUpdate({
+            referenceId,
+            status,
+            amount,
+            userId,
+            timestamp: Date.now(),
+        }, secret, headerSecret);
+    }
 
     private verifyWebhookSecret(clientSecret?: string) {
         const expectedSecret = this.configService.get('WEBHOOK_SECRET');
@@ -70,30 +111,7 @@ export class WebhookController {
         @Query('secret') secret?: string,
         @Headers('x-webhook-secret') headerSecret?: string,
     ) {
-        this.verifyWebhookSecret(secret || headerSecret || payload.signature || payload.secret);
-
-        // If it's a real Omise webhook event
-        if (payload.object === 'event' && payload.data?.object === 'charge') {
-            const charge = payload.data;
-            const chargeId = charge.id;
-            const status = charge.status === 'successful' ? 'completed' : (charge.status === 'failed' ? 'failed' : 'pending');
-            const result = await this.paymentService.handleOmiseWebhook(chargeId, status, Number(charge.amount) / 100);
-            return { success: true, message: 'Omise webhook processed', data: result };
-        }
-
-        // Fallback for simulated trigger format
-        const referenceId = payload.referenceId || payload.transactionId;
-        const status = payload.status === 'SUCCESS' ? 'completed' : 'failed';
-        const amount = payload.amount;
-        const userId = payload.userId;
-
-        return this.handlePaymentUpdate({
-            referenceId,
-            status,
-            amount,
-            userId,
-            timestamp: Date.now(),
-        }, secret, headerSecret);
+        return this.handleOmiseOrSimulatedWebhook(payload, secret, headerSecret);
     }
 
     /**
@@ -106,30 +124,7 @@ export class WebhookController {
         @Query('secret') secret?: string,
         @Headers('x-webhook-secret') headerSecret?: string,
     ) {
-        this.verifyWebhookSecret(secret || headerSecret || payload.signature || payload.secret);
-
-        // If it's a real Omise webhook event
-        if (payload.object === 'event' && payload.data?.object === 'charge') {
-            const charge = payload.data;
-            const chargeId = charge.id;
-            const status = charge.status === 'successful' ? 'completed' : (charge.status === 'failed' ? 'failed' : 'pending');
-            const result = await this.paymentService.handleOmiseWebhook(chargeId, status, Number(charge.amount) / 100);
-            return { success: true, message: 'Omise webhook processed', data: result };
-        }
-
-        // Fallback for simulated trigger format
-        const referenceId = payload.referenceId || payload.transactionId;
-        const status = payload.status === 'SUCCESS' ? 'completed' : 'failed';
-        const amount = payload.amount;
-        const userId = payload.userId;
-
-        return this.handlePaymentUpdate({
-            referenceId,
-            status,
-            amount,
-            userId,
-            timestamp: Date.now(),
-        }, secret, headerSecret);
+        return this.handleOmiseOrSimulatedWebhook(payload, secret, headerSecret);
     }
 
     /**
@@ -233,7 +228,13 @@ export class WebhookController {
         const isSucceeded = eventType === 'purchase.succeeded' || eventType === 'charge.succeeded' || payload.status === 'SUCCEEDED' || payload.status === 'completed';
 
         const referenceId = chargeData.referenceId || chargeData.reference_id || payload.referenceId || payload.ref_1 || payload.reference_id;
-        const amount = chargeData.amount ? Number(chargeData.amount) / 100 : (payload.amount ? Number(payload.amount) / 100 : undefined);
+        let rawAmount: number | undefined;
+        if (chargeData.amount) {
+            rawAmount = Number(chargeData.amount) / 100;
+        } else if (payload.amount) {
+            rawAmount = Number(payload.amount) / 100;
+        }
+        const amount = rawAmount;
         const transactionId = chargeData.id || payload.id;
 
         if (!referenceId) {

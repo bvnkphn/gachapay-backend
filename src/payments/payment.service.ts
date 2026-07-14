@@ -67,8 +67,8 @@ import { ApiCreditService } from '../api-credit/api-credit.service';
 @Injectable()
 export class PaymentService {
     constructor(
-        private prisma: PrismaService,
-        private apiCreditService: ApiCreditService,
+        private readonly prisma: PrismaService,
+        private readonly apiCreditService: ApiCreditService,
     ) {}
 
     async getAdminLogs() {
@@ -92,6 +92,12 @@ export class PaymentService {
             const thaiYear = (date.getFullYear() + 543) % 100;
             const timeStr = `${String(date.getDate()).padStart(2, '0')} ${months[date.getMonth()]} ${thaiYear} · ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
 
+            const getStatusLabel = (s: string) => {
+                if (s === "completed") return "success";
+                if (s === "failed") return "failed";
+                return "pending";
+            };
+
             return {
                 id: `LOG-${t.id}`,
                 time: timeStr,
@@ -100,7 +106,7 @@ export class PaymentService {
                 type: t.orderId ? "charge.complete" : "wallet.deposit",
                 orderId: t.orderId ? `ORD-${t.orderId}` : "-",
                 amount: Number(t.amount),
-                status: t.status === "completed" ? "success" : t.status === "failed" ? "failed" : "pending",
+                status: getStatusLabel(t.status),
                 transactionStatus: t.status,
                 latency: t.status === "failed" ? "timeout" : latency,
                 slip_url: this.makeAbsoluteUrl(t.slipUrl),
@@ -336,6 +342,162 @@ export class PaymentService {
         return { success: true, message: 'Payment processed successfully', data: { orderId, status: 'completed' } };
     }
 
+    private async callStripeAPI(config: any, amount: number, referenceNumber: string) {
+        const params = new URLSearchParams();
+        params.append('amount', Math.round(amount * 100).toString()); // Stripe expects smallest unit (satang)
+        params.append('currency', 'thb');
+        params.append('payment_method_data[type]', 'promptpay');
+        params.append('confirm', 'true');
+        params.append('return_url', config.webhookUrl || 'https://api.gachapay.in.th/webhook/stripe');
+        params.append('metadata[reference_id]', referenceNumber);
+
+        const paymentRes = await fetch('https://api.stripe.com/v1/payment_intents', {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + config.secretKey,
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: params.toString(),
+        });
+
+        const paymentResult = await paymentRes.json();
+
+        if (paymentResult.id && paymentResult.next_action?.promptpay_display_qr_code?.image_url_png) {
+            return {
+                qrCodeUrl: paymentResult.next_action.promptpay_display_qr_code.image_url_png,
+                gatewayChargeId: paymentResult.id
+            };
+        }
+        console.error('Stripe API error response:', paymentResult);
+        return null;
+    }
+
+    private async callBeamAPI(config: any, method: string, amount: number, referenceNumber: string) {
+        const merchantId = config.publicKey;
+        const apiKey = config.secretKey;
+        const endpoint = config.apiEndpointSources || 'https://api.beamcheckout.com/api/v1/charges';
+
+        const authHeader = 'Basic ' + Buffer.from(merchantId + ':' + apiKey).toString('base64');
+        
+        const payload = {
+            amount: Math.round(amount * 100), // Beam expects satang
+            currency: 'THB',
+            paymentMethod: {
+                paymentMethodType: method === 'promptpay' ? 'QR_PROMPT_PAY' : 'CARD',
+                qrPromptPay: method === 'promptpay' ? {} : undefined,
+            },
+            referenceId: referenceNumber,
+            returnUrl: config.webhookUrl || 'https://api.gachapay.in.th/webhook/beam',
+            skip3dsFlow: false
+        };
+
+        const paymentRes = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Authorization': authHeader,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+        });
+
+        const paymentResult = await paymentRes.json();
+        let qrCodeUrl = null;
+
+        if (paymentResult.actionRequired === 'ENCODED_IMAGE' && paymentResult.encodedImage) {
+            const imgObj = paymentResult.encodedImage;
+            if (typeof imgObj === 'string') {
+                qrCodeUrl = imgObj.startsWith('data:') ? imgObj : `data:image/png;base64,${imgObj}`;
+            } else if (imgObj.data) {
+                qrCodeUrl = imgObj.data.startsWith('data:') ? imgObj.data : `data:image/${imgObj.imageFormat?.toLowerCase() || 'png'};base64,${imgObj.data}`;
+            } else if (imgObj.qrCode) {
+                qrCodeUrl = imgObj.qrCode;
+            }
+            return { qrCodeUrl, gatewayChargeId: paymentResult.id || 'beam_charge' };
+        } else if (paymentResult.actionRequired === 'REDIRECT' && paymentResult.redirect?.url) {
+            return { qrCodeUrl: paymentResult.redirect.url, gatewayChargeId: paymentResult.id || 'beam_charge' };
+        }
+        console.error('Beam API error response:', paymentResult);
+        return null;
+    }
+
+    private async callCyberpayAPI(config: any, amount: number, referenceNumber: string) {
+        const partnerId = config.publicKey;
+        const secretKey = config.secretKey;
+        const endpoint = config.apiEndpointSources; // e.g. https://gateway.cyberpay.tech/api/third-party/payment
+
+        const paymentRes = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'PartnerId': partnerId,
+                'SecretKey': secretKey,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                payment_channel_id: 'P002', // PromptPay channel
+                ref_1: referenceNumber,
+                amount: amount,
+            }),
+        });
+
+        const paymentResult = await paymentRes.json();
+
+        if (paymentResult.status && paymentResult.data?.qr_image) {
+            return {
+                qrCodeUrl: `data:image/png;base64,${paymentResult.data.qr_image}`,
+                gatewayChargeId: paymentResult.data.ref_2 || 'cyberpay_charge'
+            };
+        }
+        console.error('Cyberpay API error response:', paymentResult);
+        return null;
+    }
+
+    private async callOmiseAPI(config: any, method: string, amount: number) {
+        const authHeader = 'Basic ' + Buffer.from(config.secretKey + ':').toString('base64');
+        const sourcesUrl = config.apiEndpointSources || "https://api.omise.co/sources";
+        const chargesUrl = config.apiEndpointCharges || "https://api.omise.co/charges";
+
+        const sourceRes = await fetch(sourcesUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': authHeader,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                type: method === 'promptpay' ? 'promptpay' : 'truemoney',
+                amount: Math.round(amount * 100),
+                currency: 'THB',
+            }),
+        });
+        const source = await sourceRes.json();
+        
+        if (source.id) {
+            const chargeRes = await fetch(chargesUrl, {
+                method: 'POST',
+                headers: {
+                    'Authorization': authHeader,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    amount: Math.round(amount * 100),
+                    currency: 'THB',
+                    source: source.id,
+                    return_uri: config.webhookUrl || 'https://api.gachapay.in.th/webhook/callback',
+                }),
+            });
+            const charge = await chargeRes.json();
+            if (charge.id) {
+                let qrCodeUrl = null;
+                if (charge.source?.scannable_code?.image?.download_uri) {
+                    qrCodeUrl = charge.source.scannable_code.image.download_uri;
+                } else if (charge.authorize_uri) {
+                    qrCodeUrl = charge.authorize_uri;
+                }
+                return { qrCodeUrl, gatewayChargeId: charge.id };
+            }
+        }
+        return null;
+    }
+
     async generateQRCode(orderId: number, amount: number, method: 'promptpay' | 'truemoney' | 'bank_transfer', requesterUserId?: bigint) {
         const referenceNumber = `${method.toUpperCase()}_${orderId}_${Date.now()}`;
         let qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${referenceNumber}`;
@@ -343,7 +505,8 @@ export class PaymentService {
 
         // Load Connectivity settings to check if real keys are supplied
         const settings = await this.getAdminSettings();
-        const config = settings.find((s: any) => s.id === (method === 'promptpay' ? 'promptpay' : method === 'truemoney' ? 'truemoney' : 'bank_transfer'));
+        const methodKey = method === 'promptpay' ? 'promptpay' : method === 'truemoney' ? 'truemoney' : 'bank_transfer';
+        const config = settings.find((s: any) => s.id === methodKey);
 
         if (config && config.secretKey && (
             config.provider === 'beam' ||
@@ -359,152 +522,20 @@ export class PaymentService {
             config.publicKey?.startsWith('CPT')
         )) {
             try {
+                let apiResult = null;
                 if (config.provider === 'stripe' || config.secretKey?.startsWith('sk_') || config.secretKey?.includes('stripe') || config.publicKey?.startsWith('pk_')) {
-                    // Call Stripe API
-                    const params = new URLSearchParams();
-                    params.append('amount', Math.round(amount * 100).toString()); // Stripe expects smallest unit (satang)
-                    params.append('currency', 'thb');
-                    params.append('payment_method_data[type]', 'promptpay');
-                    params.append('confirm', 'true');
-                    params.append('return_url', config.webhookUrl || 'https://api.gachapay.in.th/webhook/stripe');
-                    params.append('metadata[reference_id]', referenceNumber);
-
-                    const paymentRes = await fetch('https://api.stripe.com/v1/payment_intents', {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': 'Bearer ' + config.secretKey,
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                        },
-                        body: params.toString(),
-                    });
-
-                    const paymentResult = await paymentRes.json();
-
-                    if (paymentResult.id && paymentResult.next_action?.promptpay_display_qr_code?.image_url_png) {
-                        qrCodeUrl = paymentResult.next_action.promptpay_display_qr_code.image_url_png;
-                        gatewayChargeId = paymentResult.id;
-                    } else {
-                        console.error('Stripe API error response:', paymentResult);
-                    }
+                    apiResult = await this.callStripeAPI(config, amount, referenceNumber);
                 } else if (config.provider === 'beam' || config.apiEndpointSources?.includes('beam')) {
-                    // Call Beam Checkout API
-                    const merchantId = config.publicKey;
-                    const apiKey = config.secretKey;
-                    const endpoint = config.apiEndpointSources || 'https://api.beamcheckout.com/api/v1/charges';
-
-                    const authHeader = 'Basic ' + Buffer.from(merchantId + ':' + apiKey).toString('base64');
-                    
-                    const payload = {
-                        amount: Math.round(amount * 100), // Beam expects satang
-                        currency: 'THB',
-                        paymentMethod: {
-                            paymentMethodType: method === 'promptpay' ? 'QR_PROMPT_PAY' : 'CARD',
-                            qrPromptPay: method === 'promptpay' ? {} : undefined,
-                        },
-                        referenceId: referenceNumber,
-                        returnUrl: config.webhookUrl || 'https://api.gachapay.in.th/webhook/beam',
-                        skip3dsFlow: false
-                    };
-
-                    const paymentRes = await fetch(endpoint, {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': authHeader,
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(payload),
-                    });
-
-                    const paymentResult = await paymentRes.json();
-
-                    if (paymentResult.actionRequired === 'ENCODED_IMAGE' && paymentResult.encodedImage) {
-                        const imgObj = paymentResult.encodedImage;
-                        if (typeof imgObj === 'string') {
-                            qrCodeUrl = imgObj.startsWith('data:') ? imgObj : `data:image/png;base64,${imgObj}`;
-                        } else if (imgObj.data) {
-                            qrCodeUrl = imgObj.data.startsWith('data:') ? imgObj.data : `data:image/${imgObj.imageFormat?.toLowerCase() || 'png'};base64,${imgObj.data}`;
-                        } else if (imgObj.qrCode) {
-                            qrCodeUrl = imgObj.qrCode;
-                        }
-                        gatewayChargeId = paymentResult.id || 'beam_charge';
-                    } else if (paymentResult.actionRequired === 'REDIRECT' && paymentResult.redirect?.url) {
-                        qrCodeUrl = paymentResult.redirect.url;
-                        gatewayChargeId = paymentResult.id || 'beam_charge';
-                    } else {
-                        console.error('Beam API error response:', paymentResult);
-                    }
+                    apiResult = await this.callBeamAPI(config, method, amount, referenceNumber);
                 } else if (config.provider === 'cyberpay' || config.apiEndpointSources?.includes('cyberpay')) {
-                    // Call Cyberpay API
-                    const partnerId = config.publicKey;
-                    const secretKey = config.secretKey;
-                    const endpoint = config.apiEndpointSources; // e.g. https://gateway.cyberpay.tech/api/third-party/payment
-
-                    const paymentRes = await fetch(endpoint, {
-                        method: 'POST',
-                        headers: {
-                            'PartnerId': partnerId,
-                            'SecretKey': secretKey,
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            payment_channel_id: 'P002', // PromptPay channel
-                            ref_1: referenceNumber,
-                            amount: amount,
-                        }),
-                    });
-
-                    const paymentResult = await paymentRes.json();
-
-                    if (paymentResult.status && paymentResult.data?.qr_image) {
-                        qrCodeUrl = `data:image/png;base64,${paymentResult.data.qr_image}`;
-                        gatewayChargeId = paymentResult.data.ref_2 || 'cyberpay_charge';
-                    } else {
-                        console.error('Cyberpay API error response:', paymentResult);
-                    }
+                    apiResult = await this.callCyberpayAPI(config, amount, referenceNumber);
                 } else {
-                    // If it is a real Omise key, call real Omise endpoints
-                    const authHeader = 'Basic ' + Buffer.from(config.secretKey + ':').toString('base64');
-                    const sourcesUrl = config.apiEndpointSources || "https://api.omise.co/sources";
-                    const chargesUrl = config.apiEndpointCharges || "https://api.omise.co/charges";
+                    apiResult = await this.callOmiseAPI(config, method, amount);
+                }
 
-                    const sourceRes = await fetch(sourcesUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': authHeader,
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            type: method === 'promptpay' ? 'promptpay' : 'truemoney',
-                            amount: Math.round(amount * 100),
-                            currency: 'THB',
-                        }),
-                    });
-                    const source = await sourceRes.json();
-                    
-                    if (source.id) {
-                        const chargeRes = await fetch(chargesUrl, {
-                            method: 'POST',
-                            headers: {
-                                'Authorization': authHeader,
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                                amount: Math.round(amount * 100),
-                                currency: 'THB',
-                                source: source.id,
-                                return_uri: config.webhookUrl || 'https://api.gachapay.in.th/webhook/callback',
-                            }),
-                        });
-                        const charge = await chargeRes.json();
-                        if (charge.id) {
-                            gatewayChargeId = charge.id;
-                            if (charge.source?.scannable_code?.image?.download_uri) {
-                                qrCodeUrl = charge.source.scannable_code.image.download_uri;
-                            } else if (charge.authorize_uri) {
-                                qrCodeUrl = charge.authorize_uri;
-                            }
-                        }
-                    }
+                if (apiResult) {
+                    qrCodeUrl = apiResult.qrCodeUrl || qrCodeUrl;
+                    gatewayChargeId = apiResult.gatewayChargeId;
                 }
             } catch (err) {
                 console.error('Payment Gateway API call failed, falling back to simulator:', err);
@@ -526,7 +557,13 @@ export class PaymentService {
             where: { code: method },
             select: { id: true },
         });
-        const methodId = paymentMethodRecord ? paymentMethodRecord.id : (method === 'promptpay' ? BigInt(2) : method === 'truemoney' ? BigInt(3) : BigInt(1));
+        const resolveMethodId = (): bigint => {
+            if (paymentMethodRecord) return BigInt(paymentMethodRecord.id);
+            if (method === 'promptpay') return BigInt(2);
+            if (method === 'truemoney') return BigInt(3);
+            return BigInt(1);
+        };
+        const methodId = resolveMethodId();
 
         const isStripe = config && (config.provider === 'stripe' || config.secretKey?.startsWith('sk_') || config.secretKey?.includes('stripe') || config.publicKey?.startsWith('pk_'));
         const isBeam = config && (config.provider === 'beam' || config.apiEndpointSources?.includes('beam'));
@@ -543,7 +580,7 @@ export class PaymentService {
                 expiresAt: new Date(Date.now() + 3 * 60 * 1000),
                 paymentUrl: qrCodeUrl,
                 adminNote: gatewayChargeId 
-                    ? (isStripe ? `Stripe PI: ${gatewayChargeId}` : (isBeam ? `Beam ID: ${gatewayChargeId}` : (isCyberpay ? `Cyberpay Ref: ${gatewayChargeId}` : `Omise Charge ID: ${gatewayChargeId}`)))
+                    ? this.resolveGatewayLabel(isStripe, isBeam, isCyberpay, gatewayChargeId)
                     : 'Simulated Gateway',
             },
         });
@@ -551,7 +588,7 @@ export class PaymentService {
         return {
             success: true,
             message: gatewayChargeId 
-                ? (isStripe ? 'QR code generated via Stripe' : (isBeam ? 'QR code generated via Beam' : (isCyberpay ? 'QR code generated via Cyberpay' : 'QR code generated via Omise')))
+                ? this.resolveGatewayMessage(isStripe, isBeam, isCyberpay)
                 : 'QR code generated successfully',
             data: { qrCode: qrCodeUrl, referenceNumber, expiresAt: new Date(Date.now() + 3 * 60 * 1000), method },
         };
@@ -565,6 +602,77 @@ export class PaymentService {
 
         if (!order) return { success: false, message: 'Order not found', status: null };
         return { success: true, message: 'Payment status retrieved', status: order.status };
+    }
+
+    private async applyCouponForPaymentUpdate(updatedOrder: any) {
+        try {
+            const coupon = await this.prisma.coupon.findUnique({ where: { code: updatedOrder.couponCode } });
+            if (coupon) {
+                await this.prisma.couponUsage.create({
+                    data: {
+                        couponId: coupon.id,
+                        userId: updatedOrder.userId,
+                        orderId: updatedOrder.id,
+                        usedAmount: updatedOrder.packagePrice,
+                        discountAmount: updatedOrder.discountAmount,
+                    }
+                });
+                await this.prisma.coupon.update({
+                    where: { id: coupon.id },
+                    data: { currentUsageCount: { increment: 1 } },
+                });
+            }
+        } catch (err) {
+            console.error("Failed to apply coupon on updatePaymentStatus:", err);
+        }
+    }
+
+    private async deductApiCreditForPaymentUpdate(orderId: bigint) {
+        try {
+            const orderWithPkg = await this.prisma.order.findUnique({
+                where: { id: orderId },
+                include: { package: true },
+            });
+            if (orderWithPkg) {
+                const cost = orderWithPkg.package?.cost 
+                    ? Number(orderWithPkg.package.cost) 
+                    : Number(orderWithPkg.packagePrice);
+                await this.apiCreditService.deductCredit(
+                    '24payseller',
+                    cost,
+                    `หักเครดิตสำหรับออเดอร์ #${orderId} (แพ็คเกจ: ${orderWithPkg.packageName})`,
+                    orderId
+                );
+            }
+        } catch (err) {
+            console.error('Failed to deduct API credit on updatePaymentStatus:', err);
+        }
+    }
+
+    private async autocompleteOrderOnPaymentSuccess(referenceId: string) {
+        const parts = referenceId.split('_');
+        if (parts.length < 3) return;
+        const orderIdStr = parts[1];
+        try {
+            const orderId = BigInt(orderIdStr);
+            const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+            if (order) {
+                const updatedOrder = await this.prisma.order.update({
+                    where: { id: orderId },
+                    data: { status: 'completed', paymentMethod: parts[0].toLowerCase(), updatedAt: new Date() },
+                });
+
+                if (updatedOrder.couponCode) {
+                    await this.applyCouponForPaymentUpdate(updatedOrder);
+                }
+
+                if (updatedOrder.userId) {
+                    await this.prisma.processReferralReward(updatedOrder.userId);
+                }
+
+                await this.deductApiCreditForPaymentUpdate(orderId);
+            }
+        } catch (err) {}
     }
 
     async updatePaymentStatus(referenceId: string, status: 'completed' | 'failed' | 'cancelled', amount: number, userId: bigint) {
@@ -595,69 +703,7 @@ export class PaymentService {
         }
 
         if (status === 'completed') {
-            // Check if referenceId follows the pattern METHOD_ORDERID_TIMESTAMP to auto-complete the order
-            const parts = referenceId.split('_');
-            if (parts.length >= 3) {
-                const orderIdStr = parts[1];
-                try {
-                    const orderId = BigInt(orderIdStr);
-                    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
-                    if (order) {
-                        const updatedOrder = await this.prisma.order.update({
-                            where: { id: orderId },
-                            data: { status: 'completed', paymentMethod: parts[0].toLowerCase(), updatedAt: new Date() },
-                        });
-
-                        if (updatedOrder.couponCode) {
-                            try {
-                                const coupon = await this.prisma.coupon.findUnique({ where: { code: updatedOrder.couponCode } });
-                                if (coupon) {
-                                    await this.prisma.couponUsage.create({
-                                        data: {
-                                            couponId: coupon.id,
-                                            userId: updatedOrder.userId,
-                                            orderId: updatedOrder.id,
-                                            usedAmount: updatedOrder.packagePrice,
-                                            discountAmount: updatedOrder.discountAmount,
-                                        }
-                                    });
-                                    await this.prisma.coupon.update({
-                                        where: { id: coupon.id },
-                                        data: { currentUsageCount: { increment: 1 } },
-                                    });
-                                }
-                            } catch (err) {
-                                console.error("Failed to apply coupon on updatePaymentStatus:", err);
-                            }
-                        }
-
-                        if (updatedOrder.userId) {
-                            await this.prisma.processReferralReward(updatedOrder.userId);
-                        }
-
-                        // Deduct API credit from 24PaySeller provider
-                        try {
-                            const orderWithPkg = await this.prisma.order.findUnique({
-                                where: { id: orderId },
-                                include: { package: true },
-                            });
-                            if (orderWithPkg) {
-                                const cost = orderWithPkg.package?.cost 
-                                    ? Number(orderWithPkg.package.cost) 
-                                    : Number(orderWithPkg.packagePrice);
-                                await this.apiCreditService.deductCredit(
-                                    '24payseller',
-                                    cost,
-                                    `หักเครดิตสำหรับออเดอร์ #${orderId} (แพ็คเกจ: ${orderWithPkg.packageName})`,
-                                    orderId
-                                );
-                            }
-                        } catch (err) {
-                            console.error('Failed to deduct API credit on updatePaymentStatus:', err);
-                        }
-                    }
-                } catch (err) {}
-            }
+            await this.autocompleteOrderOnPaymentSuccess(referenceId);
         }
 
         return { success: true, message: `Payment ${status}`, data: { referenceId, status } };
@@ -720,5 +766,19 @@ export class PaymentService {
         return this.prisma.topupTransaction.findUnique({
             where: { referenceId }
         });
+    }
+
+    private resolveGatewayLabel(isStripe: boolean, isBeam: boolean, isCyberpay: boolean, chargeId: string): string {
+        if (isStripe) return `Stripe PI: ${chargeId}`;
+        if (isBeam) return `Beam ID: ${chargeId}`;
+        if (isCyberpay) return `Cyberpay Ref: ${chargeId}`;
+        return `Omise Charge ID: ${chargeId}`;
+    }
+
+    private resolveGatewayMessage(isStripe: boolean, isBeam: boolean, isCyberpay: boolean): string {
+        if (isStripe) return 'QR code generated via Stripe';
+        if (isBeam) return 'QR code generated via Beam';
+        if (isCyberpay) return 'QR code generated via Cyberpay';
+        return 'QR code generated via Omise';
     }
 }

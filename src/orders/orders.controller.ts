@@ -133,27 +133,22 @@ export class OrdersController {
         return this.ordersService.findByIdForUser(BigInt(id), req.user.id);
     }
 
-    @Post()
-    @UseGuards(JwtAuthGuard)
-    async create(@Req() req: any, @Body() dto: CreateOrderDto) {
-        const userId = req.user.id;
-        const email = dto.email || req.user.email;
-        if (!email) throw new BadRequestException('Email is required for order creation');
-
+    private resolveGameId(gameIdDto: string | number | bigint) {
         let gameId: bigint | null = null;
         let externalGameSlug: string | null = null;
-        if (typeof dto.gameId === 'string') {
-            externalGameSlug = dto.gameId;
-        } else if (typeof dto.gameId === 'number' || typeof dto.gameId === 'bigint') {
-            gameId = BigInt(dto.gameId);
+        if (typeof gameIdDto === 'string') {
+            externalGameSlug = gameIdDto;
+        } else if (typeof gameIdDto === 'number' || typeof gameIdDto === 'bigint') {
+            gameId = BigInt(gameIdDto);
         }
+        return { gameId, externalGameSlug };
+    }
 
+    private async resolvePackageId(packageIdDto: string | number | bigint, packageName: string) {
         let packageId: bigint | null = null;
         let externalPackageSku: string | null = null;
-        if (typeof dto.packageId === 'string') {
-            // redundant assignment removed
-        } else if (typeof dto.packageId === 'number' || typeof dto.packageId === 'bigint') {
-            const packageIdBig = BigInt(dto.packageId);
+        if (typeof packageIdDto === 'number' || typeof packageIdDto === 'bigint') {
+            const packageIdBig = BigInt(packageIdDto);
             const packageExists = await this.prisma.gamePackage.findUnique({
                 where: { id: packageIdBig },
                 select: { id: true },
@@ -161,47 +156,80 @@ export class OrdersController {
             if (packageExists) {
                 packageId = packageIdBig;
             } else {
-                externalPackageSku = `${dto.packageName}_${dto.packageId}`.toLowerCase().replace(/\s+/g, '_');
-                // redundant assignment removed
+                externalPackageSku = `${packageName}_${packageIdDto}`.toLowerCase().replace(/\s+/g, '_');
             }
         }
+        return { packageId, externalPackageSku };
+    }
 
-        // Validate coupon if provided
-        let discountAmount = 0;
-        let finalPrice = dto.packagePrice;
-        let couponCode: string | null = null;
+    private async validateCouponAndApply(
+        couponCodeDto: string,
+        gameId: bigint | null,
+        packageId: bigint | null,
+        packagePrice: number,
+        userId: bigint,
+    ) {
+        try {
+            const validation = await this.couponsService.validateCoupon({
+                code: couponCodeDto,
+                gameId: gameId ? Number(gameId) : undefined,
+                packageId: packageId ? Number(packageId) : undefined,
+                amount: packagePrice,
+            }, userId || BigInt(1));
 
-        if (dto.couponCode) {
-            try {
-                const validation = await this.couponsService.validateCoupon({
-                    code: dto.couponCode,
-                    gameId: gameId ? Number(gameId) : undefined,
-                    packageId: packageId ? Number(packageId) : undefined,
-                    amount: dto.packagePrice
-                }, userId || BigInt(1)); // fallback to 1 (default user ID) if guest
-
-                if (validation && validation.success && validation.data) {
-                    couponCode = validation.data.code;
-                    discountAmount = validation.data.discountAmount;
-                    finalPrice = validation.data.finalAmount;
-                } else {
-                    throw new BadRequestException(validation.message || 'คูปองไม่ถูกต้อง');
-                }
-            } catch (couponErr: any) {
-                throw new BadRequestException(couponErr.message || 'เกิดข้อผิดพลาดในการตรวจสอบคูปอง');
+            if (validation && validation.success && validation.data) {
+                return {
+                    couponCode: validation.data.code,
+                    discountAmount: validation.data.discountAmount,
+                    finalPrice: validation.data.finalAmount,
+                };
             }
+            throw new BadRequestException(validation.message || 'คูปองไม่ถูกต้อง');
+        } catch (couponErr: any) {
+            throw new BadRequestException(couponErr.message || 'เกิดข้อผิดพลาดในการตรวจสอบคูปอง');
         }
+    }
 
-        // Calculate VAT on top of the final price (after discount)
+    private async calculateVat(finalPrice: number) {
         const vatSetting = await this.prisma.systemSetting.findUnique({
             where: { key: 'payment_vat_rate' },
         });
         const vatRate = vatSetting ? Number.parseFloat(vatSetting.value) ?? 7.0 : 7.0;
         const vatAmountVal = finalPrice * (vatRate / 100);
-        finalPrice = Math.round((finalPrice + vatAmountVal) * 100) / 100;
+        return Math.round((finalPrice + vatAmountVal) * 100) / 100;
+    }
+
+    @Post()
+    @UseGuards(JwtAuthGuard)
+    async create(@Req() req: any, @Body() dto: CreateOrderDto) {
+        const userId = req.user.id;
+        const email = dto.email || req.user.email;
+        if (!email) throw new BadRequestException('Email is required for order creation');
+
+        const { gameId, externalGameSlug } = this.resolveGameId(dto.gameId);
+        const { packageId, externalPackageSku } = await this.resolvePackageId(dto.packageId, dto.packageName);
+
+        let discountAmount = 0;
+        let finalPrice = dto.packagePrice;
+        let couponCode: string | null = null;
+
+        if (dto.couponCode) {
+            const couponResult = await this.validateCouponAndApply(
+                dto.couponCode,
+                gameId,
+                packageId,
+                dto.packagePrice,
+                userId,
+            );
+            couponCode = couponResult.couponCode;
+            discountAmount = couponResult.discountAmount;
+            finalPrice = couponResult.finalPrice;
+        }
+
+        finalPrice = await this.calculateVat(finalPrice);
 
         const order = await this.ordersService.create({
-            userId:           userId,
+            userId,
             gameId,
             externalGameSlug,
             gameName:         dto.gameName,

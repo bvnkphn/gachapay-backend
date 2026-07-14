@@ -175,6 +175,67 @@ export class OrdersService {
         };
     }
 
+    private async handleAdminRefund(updated: any) {
+        if (updated.userId) {
+            const refundAmount = Number(updated.finalPrice ?? updated.packagePrice);
+            if (refundAmount > 0) {
+                await this.prisma.user.update({
+                    where: { id: updated.userId },
+                    data: { wallet_balance: { increment: refundAmount } },
+                });
+            }
+        }
+    }
+
+    private async handleAdminCompleted(orderId: bigint, updated: any) {
+        if (updated.couponCode) {
+            try {
+                const coupon = await this.prisma.coupon.findUnique({ where: { code: updated.couponCode } });
+                if (coupon) {
+                    await this.prisma.couponUsage.create({
+                        data: {
+                            couponId: coupon.id,
+                            userId: updated.userId,
+                            orderId: updated.id,
+                            usedAmount: updated.packagePrice,
+                            discountAmount: updated.discountAmount,
+                        }
+                    });
+                    await this.prisma.coupon.update({
+                        where: { id: coupon.id },
+                        data: { currentUsageCount: { increment: 1 } },
+                    });
+                }
+            } catch (err) {
+                console.error("Failed to apply coupon on manual admin complete:", err);
+            }
+        }
+        if (updated.userId) {
+            await this.prisma.processReferralReward(updated.userId);
+        }
+        
+        // Deduct API credit from 24PaySeller provider
+        try {
+            const orderWithPkg = await this.prisma.order.findUnique({
+                where: { id: orderId },
+                include: { package: true },
+            });
+            if (orderWithPkg) {
+                const cost = orderWithPkg.package?.cost 
+                    ? Number(orderWithPkg.package.cost) 
+                    : Number(orderWithPkg.packagePrice);
+                await this.apiCreditService.deductCredit(
+                    '24payseller',
+                    cost,
+                    `หักเครดิตสำหรับออเดอร์ #${orderId} (แพ็คเกจ: ${orderWithPkg.packageName})`,
+                    orderId
+                );
+            }
+        } catch (err) {
+            console.error('Failed to deduct API credit:', err);
+        }
+    }
+
     // ─── Admin: PATCH /orders/admin/:id/status — เปลี่ยนสถานะด้วยมือ ─────────
     async adminUpdateStatus(orderId: bigint, newStatus: string, adminId: bigint) {
         const order = await this.prisma.order.findUnique({ where: { id: orderId } });
@@ -193,64 +254,11 @@ export class OrdersService {
         });
 
         if (newStatus === 'refunded') {
-            if (updated.userId) {
-                const refundAmount = Number(updated.finalPrice ?? updated.packagePrice);
-                if (refundAmount > 0) {
-                    await this.prisma.user.update({
-                        where: { id: updated.userId },
-                        data: { wallet_balance: { increment: refundAmount } },
-                    });
-                }
-            }
+            await this.handleAdminRefund(updated);
         }
 
         if (newStatus === 'completed') {
-            if (updated.couponCode) {
-                try {
-                    const coupon = await this.prisma.coupon.findUnique({ where: { code: updated.couponCode } });
-                    if (coupon) {
-                        await this.prisma.couponUsage.create({
-                            data: {
-                                couponId: coupon.id,
-                                userId: updated.userId,
-                                orderId: updated.id,
-                                usedAmount: updated.packagePrice,
-                                discountAmount: updated.discountAmount,
-                            }
-                        });
-                        await this.prisma.coupon.update({
-                            where: { id: coupon.id },
-                            data: { currentUsageCount: { increment: 1 } },
-                        });
-                    }
-                } catch (err) {
-                    console.error("Failed to apply coupon on manual admin complete:", err);
-                }
-            }
-            if (updated.userId) {
-                await this.prisma.processReferralReward(updated.userId);
-            }
-            
-            // Deduct API credit from 24PaySeller provider
-            try {
-                const orderWithPkg = await this.prisma.order.findUnique({
-                    where: { id: orderId },
-                    include: { package: true },
-                });
-                if (orderWithPkg) {
-                    const cost = orderWithPkg.package?.cost 
-                        ? Number(orderWithPkg.package.cost) 
-                        : Number(orderWithPkg.packagePrice);
-                    await this.apiCreditService.deductCredit(
-                        '24payseller',
-                        cost,
-                        `หักเครดิตสำหรับออเดอร์ #${orderId} (แพ็คเกจ: ${orderWithPkg.packageName})`,
-                        orderId
-                    );
-                }
-            } catch (err) {
-                console.error('Failed to deduct API credit:', err);
-            }
+            await this.handleAdminCompleted(orderId, updated);
         }
 
         // Audit log
@@ -426,7 +434,6 @@ export class OrdersService {
 
     // ─── Admin: GET /orders/admin/stats — Dashboard statistics ────────────────
     async getAdminDashboardStats(days = 7) {
-        const now = new Date();
         const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
         const daysAgoStart = new Date(); daysAgoStart.setDate(daysAgoStart.getDate() - days); daysAgoStart.setHours(0, 0, 0, 0);
         const yesterday = new Date(todayStart); yesterday.setDate(yesterday.getDate() - 1);

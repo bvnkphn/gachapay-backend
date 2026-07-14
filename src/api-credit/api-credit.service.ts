@@ -4,7 +4,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 
 @Injectable()
 export class ApiCreditService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   // ── Auto-seed default providers if none exist ────────────────────
   private async ensureDefaults() {

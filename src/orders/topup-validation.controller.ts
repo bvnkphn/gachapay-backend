@@ -10,7 +10,7 @@ import { ValidateTopupDto, ValidateTopupResponseDto } from './dto/validate-topup
 @ApiTags('Top-up Validation')
 @Controller('orders')
 export class TopupValidationController {
-    constructor(private topupValidationService: TopupValidationService) {}
+    constructor(private readonly topupValidationService: TopupValidationService) {}
 
     /**
      * ตรวจสอบข้อมูล Top-up ก่อนสร้างคำสั่งซื้อ

@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class DevOrGoogleAuthGuard extends AuthGuard('google') {
-    constructor(private configService: ConfigService) {
+    constructor(private readonly configService: ConfigService) {
         super();
     }
 
@@ -42,7 +42,7 @@ export class DevOrGoogleAuthGuard extends AuthGuard('google') {
 
 @Injectable()
 export class DevOrFacebookAuthGuard extends AuthGuard('facebook') {
-    constructor(private configService: ConfigService) {
+    constructor(private readonly configService: ConfigService) {
         super();
     }
 

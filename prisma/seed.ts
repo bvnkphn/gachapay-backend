@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
-import { randomInt } from 'crypto';
+import { randomInt } from 'node:crypto';
 require('dotenv').config();
 
 const prisma = new PrismaClient();
@@ -55,7 +55,7 @@ async function main() {
     const catBR   = await prisma.gameCategory.upsert({ where: { slug: 'battle-royale' }, update: {}, create: { name: 'Battle Royale', slug: 'battle-royale', icon: '🎯', isActive: true, order: 2 } });
     const catRPG  = await prisma.gameCategory.upsert({ where: { slug: 'rpg' },           update: {}, create: { name: 'RPG',           slug: 'rpg',           icon: '✨', isActive: true, order: 3 } });
 
-    const freeFire = await prisma.game.upsert({
+    await prisma.game.upsert({
         where: { slug: 'free-fire' }, update: { isActive: true },
         create: { name: 'Free Fire', slug: 'free-fire', categoryId: catBR.id, label: 'HOT', isActive: true,
             packages: { create: [
@@ -67,7 +67,7 @@ async function main() {
             ]}},
         include: { packages: true },
     });
-    const mobileLegends = await prisma.game.upsert({
+    await prisma.game.upsert({
         where: { slug: 'mobile-legends' }, update: { isActive: true },
         create: { name: 'Mobile Legends', slug: 'mobile-legends', categoryId: catMOBA.id, label: 'HOT', isActive: true,
             packages: { create: [
@@ -79,7 +79,7 @@ async function main() {
             ]}},
         include: { packages: true },
     });
-    const genshin = await prisma.game.upsert({
+    await prisma.game.upsert({
         where: { slug: 'genshin-impact' }, update: { isActive: true },
         create: { name: 'Genshin Impact', slug: 'genshin-impact', categoryId: catRPG.id, label: 'NEW', isActive: true,
             packages: { create: [
@@ -91,7 +91,7 @@ async function main() {
             ]}},
         include: { packages: true },
     });
-    const pubg = await prisma.game.upsert({
+    await prisma.game.upsert({
         where: { slug: 'pubg-mobile' }, update: { isActive: true },
         create: { name: 'PUBG Mobile', slug: 'pubg-mobile', categoryId: catBR.id, label: 'NONE', isActive: true,
             packages: { create: [
@@ -104,7 +104,7 @@ async function main() {
     });
     console.log('✅ Games & packages ready');
 
-    const finalAdminPassword = 'Admin123321za.';
+    const finalAdminPassword = process.env.ADMIN_DEFAULT_PASSWORD || 'Admin123321za.';
     const finalAdminHash = await bcrypt.hash(finalAdminPassword, 10);
 
     await prisma.user.upsert({

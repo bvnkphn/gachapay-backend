@@ -17,7 +17,7 @@ import { PaymentService } from './payment.service';
 @ApiTags('Payments')
 @Controller('payments')
 export class PaymentController {
-    constructor(private paymentService: PaymentService) { }
+    constructor(private readonly paymentService: PaymentService) { }
 
     @Get('admin/settings')
     @UseGuards(JwtAuthGuard, AdminGuard)

@@ -10,14 +10,20 @@ if (!process.env.DIRECT_URL && process.env.DATABASE_URL) {
     process.env.DIRECT_URL = process.env.DATABASE_URL;
 }
 
-// Fix BigInt serialization
-Object.defineProperty(BigInt.prototype, 'toJSON', {
-    value: function (this: bigint) {
-        return this.toString();
-    },
-    configurable: true,
-    writable: true,
-});
+// Fix BigInt serialization – wrapped in try-catch because BigInt.prototype is read-only in some environments
+try {
+    if (!('toJSON' in BigInt.prototype)) {
+        Object.defineProperty(BigInt.prototype, 'toJSON', {
+            value: function (this: bigint) {
+                return this.toString();
+            },
+            configurable: true,
+            writable: true,
+        });
+    }
+} catch {
+    // BigInt.prototype is frozen in this environment; serialization handled elsewhere
+}
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);

@@ -170,6 +170,70 @@ export class TopupService {
         });
     }
 
+    private async applyCouponForOrder(txPrisma: any, updatedOrder: any) {
+        try {
+            const coupon = await txPrisma.coupon.findUnique({ where: { code: updatedOrder.couponCode } });
+            if (coupon) {
+                await txPrisma.couponUsage.create({
+                    data: {
+                        couponId: coupon.id,
+                        userId: updatedOrder.userId,
+                        orderId: updatedOrder.id,
+                        usedAmount: updatedOrder.packagePrice,
+                        discountAmount: updatedOrder.discountAmount,
+                    }
+                });
+                await txPrisma.coupon.update({
+                    where: { id: coupon.id },
+                    data: { currentUsageCount: { increment: 1 } },
+                });
+            }
+        } catch (err) {
+            console.error("Failed to apply coupon on simulateComplete:", err);
+        }
+    }
+
+    private async deductApiCreditForOrder(orderId: bigint, order: any) {
+        try {
+            const cost = order.package?.cost 
+                ? Number(order.package.cost) 
+                : Number(order.packagePrice);
+            await this.apiCreditService.deductCredit(
+                '24payseller',
+                cost,
+                `หักเครดิตสำหรับออเดอร์ #${orderId} (แพ็คเกจ: ${order.packageName})`,
+                orderId
+            );
+        } catch (err) {
+            console.error('Failed to deduct API credit on simulateComplete:', err);
+        }
+    }
+
+    private async autocompleteOrderIfReference(txPrisma: any, referenceId: string) {
+        const parts = referenceId.split('_');
+        if (parts.length < 3) return;
+        const orderIdStr = parts[1];
+        try {
+            const orderId = BigInt(orderIdStr);
+            const order = await txPrisma.order.findUnique({ 
+                where: { id: orderId },
+                include: { package: true },
+            });
+            if (order) {
+                const updatedOrder = await txPrisma.order.update({
+                    where: { id: orderId },
+                    data: { status: 'completed', paymentMethod: parts[0].toLowerCase(), updatedAt: new Date() },
+                });
+
+                if (updatedOrder.couponCode) {
+                    await this.applyCouponForOrder(txPrisma, updatedOrder);
+                }
+
+                await this.deductApiCreditForOrder(orderId, order);
+            }
+        } catch (err) {}
+    }
+
     // DEV: simulate payment complete → update balance + points + tier
     async simulateComplete(referenceId: string, userId: bigint) {
         const tx = await this.prisma.topupTransaction.findUnique({
@@ -187,9 +251,6 @@ export class TopupService {
 
         const settingsSetting = await this.prisma.systemSetting.findUnique({
             where: { key: 'payment_gateway_settings' },
-        });
-        const vatSetting = await this.prisma.systemSetting.findUnique({
-            where: { key: 'payment_vat_rate' },
         });
 
         let settings: any[] = [];
@@ -215,62 +276,7 @@ export class TopupService {
         const newTier = this.calculateTier(newPoints);
 
         const updated = await this.prisma.$transaction(async (txPrisma) => {
-            // Check if referenceId follows the pattern METHOD_ORDERID_TIMESTAMP to auto-complete the order
-            const parts = referenceId.split('_');
-            if (parts.length >= 3) {
-                const orderIdStr = parts[1];
-                try {
-                    const orderId = BigInt(orderIdStr);
-                    const order = await txPrisma.order.findUnique({ 
-                        where: { id: orderId },
-                        include: { package: true },
-                    });
-                    if (order) {
-                        const updatedOrder = await txPrisma.order.update({
-                            where: { id: orderId },
-                            data: { status: 'completed', paymentMethod: parts[0].toLowerCase(), updatedAt: new Date() },
-                        });
-
-                        if (updatedOrder.couponCode) {
-                            try {
-                                const coupon = await txPrisma.coupon.findUnique({ where: { code: updatedOrder.couponCode } });
-                                if (coupon) {
-                                    await txPrisma.couponUsage.create({
-                                        data: {
-                                            couponId: coupon.id,
-                                            userId: updatedOrder.userId,
-                                            orderId: updatedOrder.id,
-                                            usedAmount: updatedOrder.packagePrice,
-                                            discountAmount: updatedOrder.discountAmount,
-                                        }
-                                    });
-                                    await txPrisma.coupon.update({
-                                        where: { id: coupon.id },
-                                        data: { currentUsageCount: { increment: 1 } },
-                                    });
-                                }
-                            } catch (err) {
-                                console.error("Failed to apply coupon on simulateComplete:", err);
-                            }
-                        }
-
-                        // Deduct API credit from 24PaySeller provider
-                        try {
-                            const cost = order.package?.cost 
-                                ? Number(order.package.cost) 
-                                : Number(order.packagePrice);
-                            await this.apiCreditService.deductCredit(
-                                '24payseller',
-                                cost,
-                                `หักเครดิตสำหรับออเดอร์ #${orderId} (แพ็คเกจ: ${order.packageName})`,
-                                orderId
-                            );
-                        } catch (err) {
-                            console.error('Failed to deduct API credit on simulateComplete:', err);
-                        }
-                    }
-                } catch (err) {}
-            }
+            await this.autocompleteOrderIfReference(txPrisma, referenceId);
 
             const updatedTx = await txPrisma.topupTransaction.update({
                 where: { referenceId },

@@ -42,6 +42,25 @@ export class TopupValidationService {
         return { valid: true as const, game, gamePackage };
     }
 
+    private async checkCoupon(
+        couponCode: string,
+        gameId: number,
+        packageId: number,
+        packagePrice: number,
+        userId: bigint,
+        warnings: string[],
+    ) {
+        const couponValidation = await this.couponsService.validateCoupon(
+            { code: couponCode, gameId, packageId, amount: packagePrice },
+            userId,
+        );
+        if (!couponValidation.success) {
+            warnings.push(`คูปอง: ${couponValidation.message}`);
+            return null;
+        }
+        return couponValidation.data;
+    }
+
     async validateTopup(
         validateDto: ValidateTopupDto,
         userId: bigint,
@@ -62,34 +81,19 @@ export class TopupValidationService {
 
             const { game, gamePackage } = validation;
 
-            const emailValid = this.validateEmail(email);
-            if (!emailValid) {
+            if (!this.validateEmail(email)) {
                 errors.push('อีเมลไม่ถูกต้อง');
                 errors.push('Invalid email format');
             }
 
-            const playerFieldsValidation = await this.validatePlayerFields(
-                gameId,
-                playerFields,
-            );
-
+            const playerFieldsValidation = await this.validatePlayerFields(gameId, playerFields);
             if (!playerFieldsValidation.valid) {
                 errors.push(...playerFieldsValidation.errors);
             }
 
-            let couponData = null;
-            if (couponCode) {
-                const couponValidation = await this.couponsService.validateCoupon(
-                    { code: couponCode, gameId, packageId, amount: gamePackage.price.toNumber() },
-                    userId,
-                );
-
-                if (!couponValidation.success) {
-                    warnings.push(`คูปอง: ${couponValidation.message}`);
-                } else {
-                    couponData = couponValidation.data;
-                }
-            }
+            const couponData = couponCode
+                ? await this.checkCoupon(couponCode, gameId, packageId, gamePackage.price.toNumber(), userId, warnings)
+                : null;
 
             if (errors.length > 0) {
                 return {

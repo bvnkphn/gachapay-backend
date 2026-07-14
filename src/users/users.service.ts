@@ -371,7 +371,7 @@ export class UsersService {
         let referrer: any = null;
         
         // Try looking up by UUID first (since UUID is default frontend link format)
-        if (cleanedCode.length > 5 && (cleanedCode.includes('-') || isNaN(Number(cleanedCode)))) {
+        if (cleanedCode.length > 5 && (cleanedCode.includes('-') || Number.isNaN(Number(cleanedCode)))) {
             referrer = await this.prisma.user.findUnique({
                 where: { uuid: cleanedCode },
             });

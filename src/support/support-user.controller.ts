@@ -5,7 +5,7 @@ import { SupportService } from './support.service';
 @ApiTags('Support User')
 @Controller('support')
 export class SupportUserController {
-  constructor(private supportService: SupportService) {}
+  constructor(private readonly supportService: SupportService) {}
 
   @Post('tickets')
   async createTicket(

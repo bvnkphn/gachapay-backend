@@ -479,21 +479,21 @@ export class GamesService {
         });
 
         // The official slugs
-        const officialSlugs = [
+        const officialSlugs = new Set([
             'action-shooter',
             'rpg-open-world-mmo',
             'moba-strategy',
             'sports-racing',
             'social-casual-simulation',
             'other'
-        ];
+        ]);
 
         // Find the official category records
-        const officialCats = allDbCategories.filter(c => officialSlugs.includes(c.slug));
+        const officialCats = allDbCategories.filter(c => officialSlugs.has(c.slug));
         const officialMapBySlug = new Map(officialCats.map(c => [c.slug, c.id]));
 
         // Find the old categories to clean up
-        const oldCats = allDbCategories.filter(c => !officialSlugs.includes(c.slug));
+        const oldCats = allDbCategories.filter(c => !officialSlugs.has(c.slug));
 
         if (oldCats.length > 0) {
             console.log(`Migrating ${oldCats.length} legacy categories...`);
